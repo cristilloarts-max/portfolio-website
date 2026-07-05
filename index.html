@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<!--
+  ============================================================
+  PORTFOLIO HOME
+  Layout inspired by withhoney.com (big editorial type, section
+  counters, marquees, numbered lists, huge closing CTA).
+  Background = your off-white "cut-through-fluid" WebGL canvas.
+  Plus: scroll parallax + reveal-on-scroll.
+
+  WHERE TO EDIT:  search the file for "EDIT".
+  TWEAK the fluid look: constants at the top of the shader.
+  TWEAK parallax strength: the data-parallax="..." numbers in
+    the HTML (bigger = more movement).
+  ============================================================
+-->
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Andre Cristillo — Graphic Designer</title>
+  <meta name="description" content="Portfolio of Andre Cristillo, a graphic designer based in Canada." />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+
+  <style>
+    :root {
+      --ink:    #FFFFFF;
+      --muted:  rgba(255,255,255,0.62);
+      --accent: #D91842;
+      --line:   rgba(255,255,255,0.16);
+      --strip:  rgba(255,255,255,0.05);
+      --font-display: "Space Grotesk", sans-serif;
+      --font-body:    "Inter", sans-serif;
+      --maxw: 1160px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; scroll-snap-type: y mandatory; }
+    body {
+      font-family: var(--font-body); color: var(--ink); line-height: 1.55;
+      background: #121212; -webkit-font-smoothing: antialiased; overflow-x: hidden;
+    }
+
+    /* ---- background layers ---- */
+    #fluid { position: fixed; inset: 0; width: 100%; height: 100%; z-index: -2; display: block; pointer-events: none; }
+    .veil  { position: fixed; inset: 0; z-index: -1; pointer-events: none;
+             background: radial-gradient(120% 90% at 50% 0%, rgba(0,0,0,0.0), rgba(0,0,0,0.35)); }
+
+    .wrap { width: 100%; max-width: var(--maxw); margin-inline: auto; padding-inline: 28px; }
+    a { color: inherit; text-decoration: none; }
+    h1,h2,h3,h4 { font-family: var(--font-display); line-height: 1.0; font-weight: 700; letter-spacing: -0.02em; }
+
+    /* ---- header ---- */
+    header {
+      position: sticky; top: 0; z-index: 20;
+      background: rgba(18,18,18,0.55); backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--line);
+    }
+    nav { display: flex; align-items: center; justify-content: space-between; height: 60px; }
+    .logo { font-family: var(--font-display); font-weight: 700; font-size: 0.95rem; letter-spacing: 0; }
+    .nav-links { display: flex; gap: 26px; font-size: 0.78rem; letter-spacing: 0.08em; text-transform: uppercase; }
+    .nav-links a { color: var(--muted); }
+    .nav-links a:hover { color: var(--ink); }
+
+    /* ---- shared section header (counter + label), the Honey signature ---- */
+    .tag-row {
+      display: flex; align-items: center; gap: 16px;
+      font-size: 0.74rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted);
+      margin-bottom: 28px;
+    }
+    .tag-row .count { font-family: var(--font-display); }
+    .tag-row .label { font-family: var(--font-display); color: var(--ink); }
+    .tag-row::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+
+    section { padding: 96px 0; }
+
+    /* ---- full-screen snapping sections ---- */
+    .screen { min-height: 100vh; display: flex; flex-direction: column; justify-content: center; }
+    .hero, .about-full, .screen, .work-panel, .contact-screen { scroll-snap-align: start; }
+
+    /* ---- HERO ---- */
+    .hero { min-height: 100vh; display: flex; flex-direction: column; justify-content: center; padding-top: 80px; }
+    .hero .intro { font-size: 0.8rem; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); margin-bottom: 24px; }
+    .hero h1 { font-size: clamp(2.8rem, 9vw, 7rem); }
+    .hero h1 .hl { color: var(--accent); }
+    .hero .sub { font-size: clamp(1rem, 2vw, 1.3rem); color: var(--muted); max-width: 520px; margin-top: 30px; }
+    .scroll-cue { margin-top: 64px; font-size: 0.72rem; letter-spacing: 0.18em; text-transform: uppercase; color: var(--muted); }
+
+    /* ---- MARQUEE strip ---- */
+    .marquee { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); background: var(--strip); overflow: hidden; }
+    .marquee-track { display: inline-flex; gap: 56px; white-space: nowrap; padding: 18px 0; will-change: transform; animation: slide 26s linear infinite; }
+    .marquee-track span { font-family: var(--font-display); font-weight: 600; font-size: 1.05rem; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink); opacity: 0.85; }
+    .marquee-track span::after { content: "✺"; margin-left: 56px; color: var(--accent); }
+    @keyframes slide { to { transform: translateX(-50%); } }
+
+    /* ---- ABOUT ---- */
+    /* ---- ABOUT (full screen, banner on top) ---- */
+    .about-full { min-height: 100vh; display: flex; flex-direction: column; padding: 60px 0 0; }
+    .about-full .marquee { width: 100%; }
+    .about-body { flex: 1; display: flex; flex-direction: column; justify-content: center; padding-top: 56px; padding-bottom: 56px; }
+
+    /* ---- ABOUT text ---- */
+    .statement { font-family: var(--font-display); font-weight: 500; font-size: clamp(1.5rem, 3.6vw, 2.6rem); line-height: 1.18; letter-spacing: -0.01em; max-width: 900px; }
+    .statement .dim { color: var(--muted); }
+    .lede { color: var(--muted); max-width: 560px; margin-top: 32px; font-size: 1.05rem; }
+
+    /* pill button (Find out more / Back to the top) */
+    .btn { display: inline-block; align-self: flex-start; margin-top: 32px; font-family: var(--font-display);
+           font-size: 0.9rem; letter-spacing: 0.02em; color: var(--ink); text-decoration: none;
+           border: 1px solid var(--line); border-radius: 999px; padding: 12px 24px;
+           transition: background 0.25s ease, color 0.25s ease, border-color 0.25s ease; }
+    .btn:hover { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+    /* ---- WORK (full-screen project panels + fixed right index) ---- */
+    .work-section { position: relative; padding: 0; }
+    .work-panel { min-height: 100vh; display: flex; align-items: center; padding: 90px 0; }
+    .work-panel-inner { display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 56px; align-items: center; width: 100%; }
+    .wp-num { font-family: var(--font-display); font-size: 0.9rem; letter-spacing: 0.1em; color: var(--accent); }
+    .wp-title { font-size: clamp(2rem, 6vw, 4rem); margin: 14px 0 18px; }
+    .wp-desc { color: var(--muted); font-size: 1.05rem; max-width: 440px; }
+    .wp-tags { margin-top: 18px; display: flex; gap: 10px; flex-wrap: wrap; }
+    .wp-tags span { font-size: 0.72rem; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); border: 1px solid var(--line); padding: 5px 11px; border-radius: 6px; }
+    .wp-link { display: inline-block; margin-top: 26px; font-family: var(--font-display); color: var(--ink); font-size: 1rem; }
+    .wp-link:hover { color: var(--accent); }
+    .wp-media { aspect-ratio: 4 / 3; border: 1px solid var(--line); border-radius: 16px; background: rgba(255,255,255,0.03); overflow: hidden;
+                display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 0.78rem; letter-spacing: 0.1em; text-transform: uppercase; }
+    .wp-media img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+    /* fixed numbered index on the right, visible only during Work */
+    .work-index { position: fixed; right: 30px; top: 50%; transform: translateY(-50%); z-index: 15;
+                  display: flex; flex-direction: column; gap: 16px; opacity: 0; pointer-events: none; transition: opacity 0.4s ease; }
+    .work-index.show { opacity: 1; pointer-events: auto; }
+    .work-index a { font-family: var(--font-display); font-size: 0.85rem; color: var(--muted); letter-spacing: 0.05em;
+                    display: flex; align-items: center; gap: 10px; }
+    .work-index a::before { content: ""; width: 16px; height: 1px; background: var(--muted); transition: width 0.25s ease, background 0.25s ease; }
+    .work-index a.active { color: var(--ink); }
+    .work-index a.active::before { width: 34px; background: var(--accent); }
+
+    /* fixed work eyebrow top-left, visible only during Work */
+    .work-eyebrow { position: fixed; left: 30px; top: 92px; z-index: 15; font-family: var(--font-display);
+                    font-size: 0.74rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted);
+                    opacity: 0; transition: opacity 0.4s ease; }
+    .work-eyebrow.show { opacity: 1; }
+    .work-eyebrow b { color: var(--ink); font-weight: 600; }
+
+    /* ---- CONTACT screen (CTA centred, footer pinned to bottom) ---- */
+    .contact-screen { min-height: 100vh; display: flex; flex-direction: column; }
+    .contact-main { flex: 1; display: flex; flex-direction: column; justify-content: center; padding-top: 80px; }
+    .contact-screen footer { margin-top: auto; }
+
+    /* ---- PROCESS ---- */
+    .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 36px; }
+    .step .n { font-family: var(--font-display); font-size: clamp(2.4rem, 5vw, 3.4rem); color: var(--accent); line-height: 1; }
+    .step h3 { font-size: 1.4rem; margin: 16px 0 12px; }
+    .step p { color: var(--muted); font-size: 0.96rem; }
+
+    /* ---- CONTACT / big CTA ---- */
+    .cta { text-align: left; }
+    .cta h2 { font-size: clamp(3rem, 12vw, 9rem); line-height: 0.92; }
+    .cta h2 a { color: var(--accent); }
+    .cta .row { margin-top: 40px; display: flex; flex-wrap: wrap; gap: 28px; align-items: center; }
+    .cta .email { font-family: var(--font-display); font-size: clamp(1.1rem, 3vw, 1.8rem); }
+    .socials { display: flex; gap: 22px; font-size: 0.78rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+    .socials a:hover { color: var(--accent); }
+
+    footer { border-top: 1px solid var(--line); padding: 30px 0; color: var(--muted); font-size: 0.8rem;
+             display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+
+    /* ---- fade content in/out with scroll ---- */
+    .reveal { opacity: 0; transition: opacity 0.6s ease; }
+    .reveal.in { opacity: 1; }
+
+    /* ---- custom dot cursor ---- */
+    .cursor-dot {
+      position: fixed; top: 0; left: 0; width: 9px; height: 9px; border-radius: 50%;
+      background: var(--accent); z-index: 9999; pointer-events: none;
+      transform: translate(-50%, -50%); transition: opacity 0.2s ease; will-change: transform;
+    }
+    html.hide-cursor, html.hide-cursor * { cursor: none !important; }
+
+    @media (max-width: 720px) {
+      .nav-links { gap: 16px; font-size: 0.72rem; }
+      .steps { grid-template-columns: 1fr; gap: 28px; }
+      .work-panel-inner { grid-template-columns: 1fr; gap: 28px; }
+      .wp-media { order: -1; }
+      .work-index, .work-eyebrow { display: none; }
+      section { padding: 72px 0; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-snap-type: none; }
+      .marquee-track { animation: none; }
+      .reveal { opacity: 1; transition: none; }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="cursor-dot" id="cursor" aria-hidden="true"></div>
+  <canvas id="fluid"></canvas>
+  <div class="veil"></div>
+
+  <!-- ===== HEADER ===== -->
+  <header>
+    <nav class="wrap">
+      <!-- EDIT: your name -->
+      <a href="#top" class="logo">Andre Cristillo</a>
+      <div class="nav-links">
+        <a href="about.html">About Me</a>
+        <a href="#work">Work</a>
+        <a href="#process">Process</a>
+        <a href="#contact">Contact</a>
+      </div>
+    </nav>
+  </header>
+
+  <main>
+    <!-- ===== HERO ===== -->
+    <section id="top" class="hero wrap">
+      <div class="reveal">
+        <p class="intro" data-parallax="0.04">Andre Cristillo — Graphic Designer · Based in Canada</p>
+        <h1 data-parallax="0.10">
+          Designing with <span class="hl">Purpose.</span><br>Creating with <span class="hl">Passion.</span>
+        </h1>
+        <p class="sub" data-parallax="0.06">I believe the best design balances purpose, creativity, and a sense of play.</p>
+        <p class="scroll-cue">(scroll)</p>
+      </div>
+    </section>
+
+    <!-- ===== 01 ABOUT (full screen, skills/traits banner across the top) ===== -->
+    <section id="about" class="about-full">
+      <!-- the banner sits at the top of the about screen. EDIT the words. -->
+      <div class="marquee" aria-hidden="true">
+        <div class="marquee-track">
+          <span>Branding</span><span>Typography</span><span>Layout</span><span>Identity</span><span>Illustration</span><span>Art Direction</span><span>Creativity</span><span>Curiosity</span><span>Playful</span>
+          <span>Branding</span><span>Typography</span><span>Layout</span><span>Identity</span><span>Illustration</span><span>Art Direction</span><span>Creativity</span><span>Curiosity</span><span>Playful</span>
+        </div>
+      </div>
+
+      <div class="wrap about-body">
+        <div class="tag-row reveal"><span class="count">[ 01 / 04 ]</span><span class="label">About</span></div>
+        <p class="statement reveal">
+          I believe the best design balances purpose, creativity, and personality.
+          <span class="dim">My goal is to create thoughtful visual experiences that engage, inspire, and endure.</span>
+        </p>
+        <p class="lede reveal">Whether I'm designing, playing sports, or gaming with friends, I enjoy bringing creativity, curiosity, and a positive mindset to everything I do.</p>
+        <a href="about.html" class="btn reveal">Find out more →</a>
+      </div>
+    </section>
+
+    <!-- ===== 02 WORK (one project per screen, fixed numbered index) ===== -->
+    <section id="work" class="work-section">
+      <div class="work-eyebrow">[ 02 / 04 ] — <b>Selected Work</b></div>
+      <nav class="work-index" aria-label="Project navigation">
+        <a href="#work-1" data-i="0">01</a>
+        <a href="#work-2" data-i="1">02</a>
+        <a href="#work-3" data-i="2">03</a>
+      </nav>
+
+      <!-- EDIT: duplicate a .work-panel block for each project (and add to .work-index above) -->
+      <div class="work-panel" id="work-1">
+        <div class="wrap work-panel-inner reveal">
+          <div>
+            <span class="wp-num">01 — Project</span>
+            <h3 class="wp-title">Commercial Product Renders</h3>
+            <p class="wp-desc">Commercial product renders enhanced through advanced photo manipulation and AI workflows.</p>
+            <div class="wp-tags"><span>Photoshop</span><span>Branding</span><span>3D Rendering</span></div>
+            <a class="wp-link" href="product-renders.html">View project ↗</a>
+          </div>
+          <div class="wp-media"><img src="FR.jpg" alt="Commercial product render of a Flavour Beast Raspberry Lemon bottle with fruit and splash effects" /></div>
+        </div>
+      </div>
+
+      <div class="work-panel" id="work-2">
+        <div class="wrap work-panel-inner reveal">
+          <div>
+            <span class="wp-num">02 — Project</span>
+            <h3 class="wp-title">Next-Generation Hockey Cards</h3>
+            <p class="wp-desc">Custom hockey cards that blend creativity with professional design. Each card is uniquely crafted and optimized for high-quality print production.</p>
+            <div class="wp-tags"><span>Photoshop</span><span>Sports</span><span>Identity</span><span>Innovation</span></div>
+            <a class="wp-link" href="hockey-cards.html">View project ↗</a>
+          </div>
+          <div class="wp-media"><img src="HC.jpg" alt="Next-generation Toronto Maple Leafs hockey cards featuring Auston Matthews" /></div>
+        </div>
+      </div>
+
+      <div class="work-panel" id="work-3">
+        <div class="wrap work-panel-inner reveal">
+          <div>
+            <span class="wp-num">03 — Project</span>
+            <h3 class="wp-title">Rethinking Digital Identity</h3>
+            <p class="wp-desc">A complete brand and app refresh focused on creating a more approachable, engaging, and memorable user experience.</p>
+            <div class="wp-tags"><span>Brand Strategy</span><span>UI/UX</span><span>App Design</span></div>
+            <a class="wp-link" href="digital-identity.html">View project ↗</a>
+          </div>
+          <div class="wp-media"><img src="thumb.jpg" alt="Granola app brand identity and UI shown across several iPhone mockups" /></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== 03 PROCESS ===== -->
+    <section id="process" class="wrap screen">
+      <div class="tag-row reveal"><span class="count">[ 03 / 04 ]</span><span class="label">How I Work</span></div>
+      <div class="steps reveal">
+        <div class="step">
+          <div class="n">01</div>
+          <h3>Ideate</h3>
+          <p>Every project begins with research and inspiration. Through moodboards and visual exploration, I shape a creative direction that aligns with the project's goals.</p>
+        </div>
+        <div class="step">
+          <div class="n">02</div>
+          <h3>Design</h3>
+          <p>With Adobe Creative Suite at the core of my workflow, I craft refined visuals while using AI to elevate imagery, explore ideas, and streamline production.</p>
+        </div>
+        <div class="step">
+          <div class="n">03</div>
+          <h3>Present</h3>
+          <p>I bring each project to life with polished mockups and detailed case studies, showcasing not only the final outcome but the thinking behind every decision.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== 04 CONTACT ===== -->
+    <section id="contact" class="wrap contact-screen">
+      <div class="contact-main reveal">
+        <div class="tag-row"><span class="count">[ 04 / 04 ]</span><span class="label">Contact</span></div>
+        <div class="cta">
+          <h2>Let's work<br><a href="mailto:cristilloarts@hotmail.com">together →</a></h2>
+          <div class="row">
+            <a class="email" href="mailto:cristilloarts@hotmail.com">cristilloarts@hotmail.com</a>
+            <div class="socials">
+              <a href="https://www.linkedin.com/in/andre-cristillo-390b36139/" target="_blank" rel="noopener">LinkedIn</a>
+              <a href="https://www.youtube.com/@cristilloarts3568/featured" target="_blank" rel="noopener">YouTube</a>
+              <a href="https://www.instagram.com/cristilloarts/" target="_blank" rel="noopener">Instagram</a>
+            </div>
+          </div>
+        </div>
+        <a href="#top" class="btn reveal">Back to the top ↑</a>
+      </div>
+      <footer>
+        <span>&copy; <span id="year"></span> Andre Cristillo. Built by hand.</span>
+        <span>Made with HTML, CSS &amp; WebGL</span>
+      </footer>
+    </section>
+  </main>
+
+  <!-- ========================================================
+       1) THE FLUID BACKGROUND  (WebGL)
+       ======================================================== -->
+  <script>
+  (function () {
+    const canvas = document.getElementById("fluid");
+    const gl = canvas.getContext("webgl") || canvas.getContext("experimental-webgl");
+    if (!gl) { canvas.style.display = "none"; return; }
+
+    const FADE = 0.05, CUT_W = 2.5, CUT_SOFT = 12;
+    const trail = document.createElement("canvas");
+    const tctx = trail.getContext("2d");
+    function sizeTrail(){
+      trail.width = 512;
+      trail.height = Math.max(1, Math.round(512 * innerHeight / innerWidth));
+      tctx.fillStyle = "#000"; tctx.fillRect(0, 0, trail.width, trail.height);
+    }
+    sizeTrail();
+
+    let last = null;
+    addEventListener("pointermove", function(e){
+      const x = (e.clientX / innerWidth)  * trail.width;
+      const y = (e.clientY / innerHeight) * trail.height;
+      if (!last) last = { x, y };
+      // faster movement -> thinner, sharper stroke = a tapered wake
+      const speed = Math.hypot(x - last.x, y - last.y);
+      const w = Math.max(0.6, CUT_W / (1 + speed * 0.18));
+      tctx.strokeStyle = "#fff"; tctx.lineWidth = w;
+      tctx.lineCap = "round"; tctx.lineJoin = "round";
+      tctx.shadowColor = "#fff"; tctx.shadowBlur = CUT_SOFT * (w / CUT_W);
+      tctx.beginPath(); tctx.moveTo(last.x, last.y); tctx.lineTo(x, y); tctx.stroke();
+      last = { x, y };
+    });
+
+    const vertSrc = `attribute vec2 aPos; void main(){ gl_Position = vec4(aPos,0.0,1.0); }`;
+    const fragSrc = `
+      precision highp float;
+      uniform vec2  uRes; uniform float uTime; uniform sampler2D uTrail; uniform vec2 uTexel;
+
+      /* ====== TWEAK THE LOOK ====== */
+      const vec3  LIQUID    = vec3(0.0706, 0.0706, 0.0706); // #121212 base colour
+      const float FLOW_SPEED = 0.035;  // how fast the oil drifts
+      const float WARP       = 1.9;    // how curvy/marbled the flow is
+      const float RIPPLES    = 6.0;    // density of the ripple lines
+      const float LINE_SOFT  = 0.30;   // line thickness
+      const float RIPPLE     = 0.05;   // ripple lines this much LIGHTER than the base (visible on dark)
+      const float CUT_BEND   = 2.6;    // how strongly the cursor bends the flow
+
+      float hash(vec2 p){ p = fract(p*vec2(123.34,456.21)); p += dot(p,p+45.32); return fract(p.x*p.y); }
+      float noise(vec2 p){
+        vec2 i=floor(p), f=fract(p), u=f*f*(3.0-2.0*f);
+        return mix(mix(hash(i),hash(i+vec2(1,0)),u.x), mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),u.x), u.y);
+      }
+      float fbm(vec2 p){ float v=0.0,a=0.5; for(int i=0;i<5;i++){ v+=a*noise(p); p*=1.9; a*=0.5; } return v; }
+
+      void main(){
+        vec2 uv  = gl_FragCoord.xy / uRes;
+        vec2 tuv = vec2(uv.x, 1.0 - uv.y);
+        float aspect = uRes.x / uRes.y;
+        vec2 P = (uv - 0.5); P.x *= aspect;
+        float t = uTime * FLOW_SPEED;
+
+        float c  = texture2D(uTrail, tuv).r;
+        float cx = texture2D(uTrail, tuv + vec2(uTexel.x,0.0)).r - texture2D(uTrail, tuv - vec2(uTexel.x,0.0)).r;
+        float cy = texture2D(uTrail, tuv + vec2(0.0,uTexel.y)).r - texture2D(uTrail, tuv - vec2(0.0,uTexel.y)).r;
+        vec2 push = vec2(cx, cy) * CUT_BEND;
+
+        vec2 drift = vec2(0.03 * t, t);
+        vec2 q = vec2(fbm(P*1.7 + drift), fbm(P*1.7 + vec2(5.2,1.3) - drift));
+        vec2 r = vec2(fbm(P*1.7 + WARP*q + push + drift),
+                      fbm(P*1.7 + WARP*q - push + vec2(8.3,2.8)));
+        float field = fbm(P*1.7 + 2.0*r);
+
+        float bands = (field + length(r)*0.5) * RIPPLES + c * 3.0;
+        float tw = abs(fract(bands) - 0.5) * 2.0;
+        float line = smoothstep(0.0, LINE_SOFT, tw);
+
+        vec3 col = LIQUID * (0.9 + 0.2 * field);     // subtle tonal variation
+        float lift = (1.0 - line) * RIPPLE + c * 0.03;
+        col += lift;                                 // ripple lines + cursor wake sit slightly lighter
+
+        gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
+      }
+    `;
+
+    function compile(type, src){
+      const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
+      if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) console.error(gl.getShaderInfoLog(s));
+      return s;
+    }
+    const prog = gl.createProgram();
+    gl.attachShader(prog, compile(gl.VERTEX_SHADER, vertSrc));
+    gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, fragSrc));
+    gl.linkProgram(prog); gl.useProgram(prog);
+
+    const vbuf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, vbuf);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
+    const loc = gl.getAttribLocation(prog, "aPos");
+    gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+
+    const uRes = gl.getUniformLocation(prog, "uRes");
+    const uTime = gl.getUniformLocation(prog, "uTime");
+    const uTexel = gl.getUniformLocation(prog, "uTexel");
+    gl.uniform1i(gl.getUniformLocation(prog, "uTrail"), 0);
+
+    const tex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+
+    function resize(){
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width  = Math.floor(innerWidth  * dpr);
+      canvas.height = Math.floor(innerHeight * dpr);
+      gl.viewport(0, 0, canvas.width, canvas.height);
+      sizeTrail(); last = null;
+    }
+    resize(); addEventListener("resize", resize);
+
+    const start = performance.now();
+    function frame(){
+      const t = (performance.now() - start) / 1000;
+      tctx.shadowBlur = 0;
+      tctx.fillStyle = "rgba(0,0,0," + FADE + ")";
+      tctx.fillRect(0, 0, trail.width, trail.height);
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, trail);
+      gl.uniform2f(uRes, canvas.width, canvas.height);
+      gl.uniform1f(uTime, t);
+      gl.uniform2f(uTexel, 1 / trail.width, 1 / trail.height);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+      requestAnimationFrame(frame);
+    }
+    frame();
+  })();
+
+  /* ========================================================
+     2) REVEAL ON SCROLL + WORK INDEX
+     ======================================================== */
+  (function () {
+    const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    // --- fade each section's content in as it enters, and back out as it leaves ---
+    const revealEls = document.querySelectorAll(".reveal");
+    if (reduce || !("IntersectionObserver" in window)) {
+      revealEls.forEach(el => el.classList.add("in"));
+    } else {
+      const io = new IntersectionObserver((entries) => {
+        entries.forEach(e => e.target.classList.toggle("in", e.intersectionRatio >= 0.45));
+      }, { threshold: [0, 0.45, 1] });
+      revealEls.forEach(el => io.observe(el));
+    }
+
+    // --- Work: show the right-hand index + eyebrow only while Work is on screen ---
+    const workSection = document.getElementById("work");
+    const indexNav = document.querySelector(".work-index");
+    const eyebrow = document.querySelector(".work-eyebrow");
+    if (workSection && indexNav && "IntersectionObserver" in window) {
+      const showObs = new IntersectionObserver((entries) => {
+        entries.forEach(e => {
+          const on = e.isIntersecting;
+          indexNav.classList.toggle("show", on);
+          if (eyebrow) eyebrow.classList.toggle("show", on);
+        });
+      }, { threshold: 0.05 });
+      showObs.observe(workSection);
+
+      // --- highlight the number of whichever project currently fills the screen ---
+      const panels = Array.from(document.querySelectorAll(".work-panel"));
+      const links = Array.from(indexNav.querySelectorAll("a"));
+      const activeObs = new IntersectionObserver((entries) => {
+        entries.forEach(e => {
+          if (e.isIntersecting) {
+            const i = panels.indexOf(e.target);
+            links.forEach((a, n) => a.classList.toggle("active", n === i));
+          }
+        });
+      }, { threshold: 0.55 });
+      panels.forEach(p => activeObs.observe(p));
+    }
+  })();
+
+  /* ========================================================
+     3) CUSTOM DOT CURSOR (tapers with movement)
+     ======================================================== */
+  (function () {
+    // only on devices with a real pointer (skip touch screens)
+    if (!matchMedia("(hover: hover) and (pointer: fine)").matches) return;
+    const dot = document.getElementById("cursor");
+    if (!dot) return;
+    document.documentElement.classList.add("hide-cursor");
+
+    let tx = innerWidth / 2, ty = innerHeight / 2;   // where the mouse is
+    let x = tx, y = ty, px = x, py = y;              // rendered (lagged) + previous
+
+    addEventListener("pointermove", (e) => { tx = e.clientX; ty = e.clientY; }, { passive: true });
+    addEventListener("mouseleave", () => dot.style.opacity = "0");
+    addEventListener("mouseenter", () => dot.style.opacity = "1");
+
+    function loop(){
+      x += (tx - x) * 0.35;  y += (ty - y) * 0.35;   // slight lag for a fluid feel
+      const dx = x - px, dy = y - py;
+      const speed = Math.min(Math.hypot(dx, dy), 60);
+      const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+      const stretch = 1 + speed * 0.06;              // elongate along the direction of motion
+      const squash  = 1 / (1 + speed * 0.04);        // thin out across it -> a taper
+      px = x; py = y;
+      dot.style.transform =
+        "translate(" + x + "px," + y + "px) translate(-50%,-50%) rotate(" + angle + "deg) scale(" + stretch + "," + squash + ")";
+      requestAnimationFrame(loop);
+    }
+    loop();
+  })();
+
+  document.getElementById("year").textContent = new Date().getFullYear();
+  </script>
+</body>
+</html>
