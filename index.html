@@ -62,6 +62,9 @@
     .nav-links { display: flex; gap: 26px; font-size: 0.78rem; letter-spacing: 0.08em; text-transform: uppercase; }
     .nav-links a { color: var(--muted); }
     .nav-links a:hover { color: var(--ink); }
+    .nav-links .nav-game { color: var(--ink); }
+    .nav-links .nav-game::before { content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+                                   background: var(--accent); margin-right: 7px; vertical-align: 2px; }
 
     /* ---- shared section header (counter + label), the Honey signature ---- */
     .tag-row {
@@ -180,7 +183,8 @@
     html.hide-cursor, html.hide-cursor * { cursor: none !important; }
 
     @media (max-width: 720px) {
-      .nav-links { gap: 16px; font-size: 0.72rem; }
+      nav { height: auto; min-height: 60px; flex-wrap: wrap; row-gap: 6px; padding-block: 12px; }
+      .nav-links { gap: 8px 16px; font-size: 0.72rem; flex-wrap: wrap; }
       .steps { grid-template-columns: 1fr; gap: 28px; }
       .work-panel-inner { grid-template-columns: 1fr; gap: 28px; }
       .wp-media { order: -1; }
@@ -210,6 +214,7 @@
         <a href="#work">Work</a>
         <a href="#process">Process</a>
         <a href="#contact">Contact</a>
+        <a href="furrow.html" class="nav-game">Furrow: Daily Game</a>
       </div>
     </nav>
   </header>
