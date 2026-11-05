@@ -171,6 +171,43 @@
   .countdown { font-family: var(--font-display); font-variant-numeric: tabular-nums; }
   .status { font-size: 0.86rem; color: var(--t-green); min-height: 1.3em; }
 
+  /* DISTRIBUTION: everyone's scores for the day */
+  .dist { display: flex; flex-direction: column; gap: 14px; border-top: 1px solid var(--line); padding-top: 22px; }
+  .dist-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px 16px; flex-wrap: wrap; }
+  .dist-head h3 { font-size: 1.15rem; letter-spacing: -0.01em; }
+  .dist-src { font-size: 0.78rem; color: var(--muted); }
+  .dist-src.sample { color: var(--t-yellow); }
+  .dist-chart { position: relative; width: 100%; min-height: 200px; touch-action: pan-y; }
+  .dist-chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .dist-chart .axis text { fill: var(--muted); font-family: var(--font-body); font-size: 11px; font-variant-numeric: tabular-nums; }
+  .dist-chart .axis line { stroke: var(--line); stroke-width: 1; }
+  .dist-chart .curve { fill: none; stroke: var(--ink); stroke-width: 2; stroke-linejoin: round; }
+  .dist-chart .area { fill: var(--ink); fill-opacity: 0.08; stroke: none; }
+  .dist-chart .mk line { stroke-width: 2; }
+  .dist-chart .mk text { font-family: var(--font-display); font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .dist-chart .mk-avg line { stroke: var(--muted); stroke-dasharray: 4 4; }
+  .dist-chart .mk-avg text { fill: var(--muted); }
+  .dist-chart .mk-top line { stroke: var(--ink); stroke-opacity: 0.55; }
+  .dist-chart .mk-top text { fill: var(--ink); }
+  .dist-chart .mk-you line { stroke: var(--accent); }
+  .dist-chart .mk-you text { fill: var(--ink); }
+  .dist-chart .mk-you circle { fill: var(--accent); stroke: var(--bg); stroke-width: 2; }
+  .dist-chart .cross { stroke: var(--ink); stroke-opacity: 0.35; stroke-width: 1; }
+  .dist-chart .band { fill: var(--ink); fill-opacity: 0.06; }
+  .dist-tip { position: absolute; top: 0; pointer-events: none; background: var(--bg); border: 1px solid var(--line); border-radius: 8px;
+              padding: 6px 10px; font-size: 0.8rem; white-space: nowrap; transform: translateX(-50%); font-variant-numeric: tabular-nums; }
+  .dist-tip b { font-family: var(--font-display); }
+  .dist-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  .dist-stats div { background: var(--bg); padding: 12px 14px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .dist-stats .k { font-size: 0.7rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); display: flex; align-items: center; gap: 7px; }
+  .dist-stats .k i { display: inline-block; width: 14px; height: 0; border-top: 2px solid var(--muted); }
+  .dist-stats .k i.dash { border-top-style: dashed; }
+  .dist-stats .k i.you { border-top-color: var(--accent); }
+  .dist-stats .k i.top { border-top-color: var(--ink); opacity: 0.55; }
+  .dist-stats .v { font-family: var(--font-display); font-size: 1.35rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .dist-stats .sub { font-size: 0.78rem; color: var(--muted); }
+  .proto label.toggle { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+
   /* history */
   .history h3 { font-size: 0.74rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); font-weight: 600; margin-bottom: 10px; }
   .history ol { list-style: none; display: flex; flex-direction: column; border-top: 1px solid var(--line); }
@@ -321,6 +358,15 @@
         <div class="total"><span class="n" id="rs-score">0</span><span class="of">/ 500</span></div>
         <div class="rank"><h2 id="rs-rank">Seed</h2><p id="rs-meaning">Come back tomorrow</p></div>
         <ul class="breakdown" id="rs-list"></ul>
+        <div class="dist" id="dist">
+          <div class="dist-head"><h3>How everyone did today</h3><span class="dist-src" id="dist-src">Loading scores…</span></div>
+          <div class="dist-chart" id="dist-chart" role="img" aria-label="Distribution of today's scores"></div>
+          <div class="dist-stats">
+            <div><span class="k"><i class="dash"></i>Average</span><span class="v" id="ds-avg">–</span></div>
+            <div><span class="k"><i class="you"></i>You placed</span><span class="v" id="ds-place">–</span><span class="sub" id="ds-place-sub"></span></div>
+            <div><span class="k"><i class="top"></i>Top score</span><span class="v" id="ds-top">–</span></div>
+          </div>
+        </div>
         <div class="row">
           <button class="btn" type="button" id="share-btn">Copy result</button>
           <button class="btn ghost" type="button" id="home-btn">Back to Furrow home</button>
@@ -366,6 +412,7 @@
     <select id="dev-day"></select>
     <button type="button" id="dev-reset">Replay this day</button>
     <button type="button" id="dev-clear">Clear all data</button>
+    <label class="toggle"><input type="checkbox" id="dev-sample" /> Sample crowd</label>
     <span class="msg" id="dev-msg">Answers off Andre's lists score 0 here. The live game sends them to an AI judge.</span>
   </div>
 </div>
@@ -806,6 +853,177 @@
       TIERS[x.tier].word + " · " + x.points + '</span></li>').join("");
     $("share-status").textContent = ""; $("share-out").hidden = true;
     show("results");
+    Crowd.submit(day, s);
+    Crowd.watch(day, s);
+  }
+
+  /* ---------- CROWD: everyone's scores for the day ----------
+     Prototype: shared scores live in the artifact's db (one doc per player,
+     scores/<playerId> = { days: { "<day>": score } }). With no db (e.g. the
+     file opened directly) or with "Sample crowd" on, a seeded sample is used
+     and labelled as such. LIVE SITE: replace with GET/POST /api/scores. */
+  const Crowd = (function () {
+    let db = null, me = null, unsub = null, watching = null, real = [], ready = false, sampleOn = false;
+    const MIN_FOR_CURVE = 2;
+    try { sampleOn = localStorage.getItem("furrow.sample") === "1"; } catch (e) {}
+    $("dev-sample").checked = sampleOn;
+    $("dev-sample").addEventListener("change", e => {
+      sampleOn = e.target.checked;
+      try { localStorage.setItem("furrow.sample", sampleOn ? "1" : "0"); } catch (err) {}
+      if (watching) draw();
+    });
+    const init = (async () => {
+      try {
+        if (!window.claude || !window.claude.use) return;
+        const [d, u] = await Promise.all([window.claude.use("db"), window.claude.use("user")]);
+        if (!d || !u) return;
+        me = await u.id(); db = d;
+      } catch (e) { db = null; }
+    })();
+
+    function sample(day, mine) {
+      let seed = day * 9973 + 17;
+      const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+      const out = [];
+      for (let i = 0; i < 179; i++) {
+        const z = Math.sqrt(-2 * Math.log(rnd() || 1e-9)) * Math.cos(2 * Math.PI * rnd());
+        out.push(Math.max(0, Math.min(500, Math.round((290 + 72 * z) / 5) * 5)));
+      }
+      out.push(mine);
+      return out;
+    }
+
+    async function submit(day, score) {
+      await init;
+      if (!db || !me) return;
+      const r = run(day);
+      if (r.submitted) return;
+      try {
+        const ref = db.doc("scores/" + me);
+        const snap = await ref.get();
+        const days = Object.assign({}, (snap.exists && snap.data().days) || {});
+        if (days[day] === undefined) { days[day] = score; await ref.set({ days }); }
+        r.submitted = true; save();
+      } catch (e) { /* read-only viewer or offline: chart still shows others */ }
+    }
+
+    async function watch(day, mine) {
+      watching = { day, mine };
+      ready = false; real = []; draw();
+      await init;
+      if (unsub) { unsub(); unsub = null; }
+      if (!db) { ready = true; draw(); return; }
+      const timer = setTimeout(() => { ready = true; draw(); }, 10000);
+      unsub = db.collection("scores").onSnapshot(snap => {
+        clearTimeout(timer);
+        real = snap.docs.map(d => ({ id: d.id, v: ((d.data() || {}).days || {})[day] }))
+          .filter(x => typeof x.v === "number" && x.v >= 0 && x.v <= 500);
+        if (me && !real.some(x => x.id === me)) real.push({ id: me, v: mine });   // count your run before the write lands
+        ready = true; draw();
+      }, () => { clearTimeout(timer); ready = true; draw(); });
+    }
+
+    function draw() {
+      if (!watching) return;
+      const { day, mine } = watching;
+      let scores, label, cls = "";
+      if (sampleOn || !db) {
+        scores = sample(day, mine);
+        label = "Sample data · " + scores.length + " made-up players";
+        cls = "sample";
+      } else if (!ready) {
+        scores = [mine]; label = "Loading scores…";
+      } else {
+        scores = real.map(x => x.v);
+        if (!scores.length) scores = [mine];
+        label = scores.length === 1 ? "Only you so far today" : scores.length + " players today";
+      }
+      $("dist-src").textContent = label;
+      $("dist-src").className = "dist-src " + cls;
+      renderDistribution($("dist-chart"), scores, mine, scores.length >= MIN_FOR_CURVE);
+    }
+    addEventListener("resize", () => { if (watching && !$("results").hidden) draw(); });
+    return { submit, watch };
+  })();
+
+  function renderDistribution(el, scores, mine, curve) {
+    const n = scores.length;
+    const avg = scores.reduce((a, b) => a + b, 0) / n;
+    const top = Math.max(...scores);
+    const place = 1 + scores.filter(v => v > mine).length;
+    const beat = n > 1 ? Math.round(100 * scores.filter(v => v < mine).length / (n - 1)) : null;
+    $("ds-avg").textContent = Math.round(avg);
+    $("ds-top").textContent = top;
+    $("ds-place").textContent = "#" + place;
+    $("ds-place-sub").textContent = "of " + n + (beat === null ? " · first to finish" : " · higher than " + beat + "%");
+
+    const W = Math.max(280, el.clientWidth || 560), H = 230;
+    const m = { l: 10, r: 10, t: 58, b: 28 };
+    const iw = W - m.l - m.r, ih = H - m.t - m.b;
+    const x = v => m.l + (v / 500) * iw;
+
+    // Smooth curve: Gaussian kernel density over 0–500
+    const mean = avg, sd = Math.sqrt(scores.reduce((a, v) => a + (v - mean) * (v - mean), 0) / n) || 40;
+    const bw = Math.max(18, 1.06 * sd * Math.pow(n, -0.2));
+    const pts = [];
+    for (let v = 0; v <= 500; v += 5) {
+      let d = 0; for (const s of scores) { const z = (v - s) / bw; d += Math.exp(-0.5 * z * z); }
+      pts.push([v, d]);
+    }
+    const maxD = Math.max(...pts.map(p => p[1])) || 1;
+    const y = d => m.t + ih - (d / maxD) * ih;
+    const densAt = v => { let d = 0; for (const s of scores) { const z = (v - s) / bw; d += Math.exp(-0.5 * z * z); } return d; };
+    const line = pts.map((p, i) => (i ? "L" : "M") + x(p[0]).toFixed(1) + " " + y(p[1]).toFixed(1)).join(" ");
+    const area = line + " L" + x(500) + " " + (m.t + ih) + " L" + x(0) + " " + (m.t + ih) + " Z";
+
+    // Markers, labels staggered into rows so they never collide
+    const marks = [{ cls: "mk-avg", v: avg, text: "Avg " + Math.round(avg) }];
+    if (top === mine) marks.push({ cls: "mk-you", v: mine, text: "You " + mine + " · Top" });
+    else marks.push({ cls: "mk-top", v: top, text: "Top " + top }, { cls: "mk-you", v: mine, text: "You " + mine });
+    marks.sort((a, b) => a.v - b.v);
+    const rows = [-Infinity, -Infinity, -Infinity];
+    marks.forEach(mk => {
+      const w = mk.text.length * 7.2 + 8, cx = Math.min(Math.max(x(mk.v), m.l + w / 2), W - m.r - w / 2);
+      let row = rows.findIndex(end => cx - w / 2 > end + 4); if (row < 0) row = 2;
+      rows[row] = cx + w / 2; mk.lx = cx; mk.row = row;
+    });
+    const used = Math.max(...marks.map(mk => mk.row)) + 1;
+    marks.forEach(mk => { mk.ly = m.t - 12 - (used - 1 - mk.row) * 16; });   // labels sit just above the lines
+    const ticks = [0, 100, 200, 300, 400, 500];
+    const svg =
+      '<svg viewBox="0 0 ' + W + ' ' + H + '" width="' + W + '" height="' + H + '" aria-hidden="true">' +
+      '<g class="axis"><line x1="' + m.l + '" x2="' + (W - m.r) + '" y1="' + (m.t + ih) + '" y2="' + (m.t + ih) + '"/>' +
+      ticks.map(t => '<text x="' + x(t) + '" y="' + (H - 8) + '" text-anchor="' + (t === 0 ? "start" : t === 500 ? "end" : "middle") + '">' + t + '</text>').join("") + '</g>' +
+      '<rect class="band" id="dist-band" x="0" y="' + m.t + '" width="0" height="' + ih + '" visibility="hidden"/>' +
+      (curve ? '<path class="area" d="' + area + '"/><path class="curve" d="' + line + '"/>' : "") +
+      marks.map(mk => {
+        const X = x(mk.v).toFixed(1);
+        return '<g class="mk ' + mk.cls + '"><line x1="' + X + '" x2="' + X + '" y1="' + (m.t - 6) + '" y2="' + (m.t + ih) + '"/>' +
+          '<text x="' + mk.lx.toFixed(1) + '" y="' + mk.ly + '" text-anchor="middle">' + mk.text + '</text>' +
+          (mk.cls === "mk-you" ? '<circle cx="' + X + '" cy="' + (curve ? y(densAt(mk.v)) : m.t + ih).toFixed(1) + '" r="5"/>' : "") + '</g>';
+      }).join("") +
+      '<line class="cross" id="dist-cross" x1="0" x2="0" y1="' + m.t + '" y2="' + (m.t + ih) + '" visibility="hidden"/>' +
+      '</svg><div class="dist-tip" id="dist-tip" hidden></div>';
+    el.innerHTML = svg;
+    el.setAttribute("aria-label", n + " players. Average " + Math.round(avg) + ", top score " + top + ", your score " + mine + ", placed " + place + " of " + n + ".");
+
+    // Hover: players within a 25-point band around the pointer
+    const svgEl = el.querySelector("svg"), tip = el.querySelector("#dist-tip"), cross = el.querySelector("#dist-cross"), band = el.querySelector("#dist-band");
+    const hide = () => { tip.hidden = true; cross.setAttribute("visibility", "hidden"); band.setAttribute("visibility", "hidden"); };
+    svgEl.addEventListener("pointermove", e => {
+      const r = svgEl.getBoundingClientRect(), px = (e.clientX - r.left) * (W / r.width);
+      const v = Math.max(0, Math.min(500, ((px - m.l) / iw) * 500));
+      const lo = Math.min(475, Math.floor(v / 25) * 25), hi = lo + 25;
+      const count = scores.filter(s => s >= lo && (s < hi || (hi === 500 && s === 500))).length;
+      cross.setAttribute("x1", x(v)); cross.setAttribute("x2", x(v)); cross.setAttribute("visibility", "visible");
+      band.setAttribute("x", x(lo)); band.setAttribute("width", x(hi) - x(lo)); band.setAttribute("visibility", "visible");
+      tip.hidden = false;
+      tip.innerHTML = "<b>" + lo + "–" + (hi === 500 ? 500 : hi - 1) + "</b> · " + count + (count === 1 ? " player" : " players");
+      const left = (x(v) / W) * r.width;
+      tip.style.left = Math.min(Math.max(left, 70), r.width - 70) + "px";
+      tip.style.top = (m.t / H) * r.height - 4 + "px";
+    });
+    svgEl.addEventListener("pointerleave", hide);
   }
   function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
   $("share-btn").addEventListener("click", () => {
