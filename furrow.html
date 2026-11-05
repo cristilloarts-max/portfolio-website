@@ -8,17 +8,14 @@
 <meta name="description" content="Furrow, a daily guessing game about Andre Cristillo. Five prompts, 30 seconds each, one run per day." />
 <!--
   ============================================================
-  FURROW — daily guessing game (PROTOTYPE)
+  FURROW — daily guessing game
   Home -> 5 x (Prompt -> Reveal) -> Results, plus How to Play.
   Shares the site theme: oil-fluid background, dot cursor,
   Space Grotesk + Inter, dark ground.
 
-  PROTOTYPE NOTES
-  - Scoring runs in the browser using furrow-data.js, which holds
-    the full answer key. Before launch, scoring moves to the API
-    and furrow-data.js is deleted (see plan, Section 5).
-  - No AI judge yet: answers that aren't on the lists score 0.
-  - The bar at the bottom lets you jump between days 1–20.
+  The page holds no answers. Prompts, scoring, reveals and the
+  score chart all come from the Furrow API (furrow-api/ folder,
+  a Cloudflare Worker). Search for API to see its address.
   ============================================================
 -->
 <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -81,7 +78,7 @@
 
   /* play column */
   main { flex: 1; }
-  .play { max-width: var(--playw); margin-inline: auto; padding-block: 48px 140px; display: flex; flex-direction: column; gap: 28px; }
+  .play { max-width: var(--playw); margin-inline: auto; padding-block: 48px 96px; display: flex; flex-direction: column; gap: 28px; }
 
   .eyebrow { font-family: var(--font-display); font-size: 0.74rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted);
              display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; }
@@ -139,6 +136,7 @@
                        border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
   .answer-form input:focus { outline: none; border-color: var(--ink); }
   .hint { font-size: 0.82rem; color: var(--muted); }
+  .hint.err { color: var(--t-orange); }
 
   /* REVEAL */
   .verdict { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
@@ -206,7 +204,6 @@
   .dist-stats .k i.top { border-top-color: var(--ink); opacity: 0.55; }
   .dist-stats .v { font-family: var(--font-display); font-size: 1.35rem; font-weight: 600; font-variant-numeric: tabular-nums; }
   .dist-stats .sub { font-size: 0.78rem; color: var(--muted); }
-  .proto label.toggle { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
 
   /* history */
   .history h3 { font-size: 0.74rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); font-weight: 600; margin-bottom: 10px; }
@@ -230,18 +227,6 @@
   .tiers .sw { display: inline-block; width: 14px; height: 14px; border-radius: 4px; vertical-align: -2px; margin-right: 10px; }
   .ranks { font-size: 0.9rem; color: var(--muted); }
   .ranks b { color: var(--ink); font-family: var(--font-display); font-weight: 600; }
-
-  /* PROTOTYPE bar */
-  .proto { position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; background: rgba(10,10,12,0.92); border-top: 1px dashed var(--line);
-           backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
-           padding: 10px max(16px, env(safe-area-inset-right, 0px)) calc(10px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
-  .proto-inner { max-width: var(--maxw); margin-inline: auto; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; font-size: 0.8rem; color: var(--muted); }
-  .proto .tag { font-family: var(--font-display); font-weight: 700; font-size: 0.7rem; letter-spacing: 0.14em; text-transform: uppercase;
-                color: var(--bg); background: var(--t-yellow); border-radius: 4px; padding: 3px 7px; }
-  .proto select, .proto button { font: inherit; font-size: 0.8rem; color: var(--ink); background: transparent; border: 1px solid var(--line); border-radius: 6px; padding: 5px 9px; cursor: pointer; }
-  .proto select option { background: var(--bg); }
-  .proto button:hover { border-color: var(--ink); }
-  .proto .msg { flex: 1 1 260px; }
 
   .screen-in { animation: rise 0.35s ease both; }
   @keyframes rise { from { opacity: 0.001; transform: translateY(8px); } to { opacity: 1; transform: none; } }
@@ -322,12 +307,12 @@
           <div class="timer-track"><div class="timer-fill" id="timer-fill"></div></div>
           <span class="timer-num" id="timer-num">30</span>
         </div>
-        <form class="answer-form" id="answer-form" autocomplete="off">
+        <form class="answer-form" id="answer-form" autocomplete="off" novalidate>
           <label class="sr" for="answer">Your answer</label>
           <input id="answer" name="answer" type="text" maxlength="80" placeholder="Type one answer" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="send" />
-          <button class="btn" type="submit">Submit</button>
+          <button class="btn" type="submit" id="submit-btn">Submit</button>
         </form>
-        <p class="hint">Enter submits. When time runs out, whatever is in the box is submitted.</p>
+        <p class="hint" id="pr-hint" role="status">Enter submits. When time runs out, whatever is in the box is submitted.</p>
       </div>
     </section>
 
@@ -404,20 +389,6 @@
   </div>
 </div>
 
-<!-- ===== PROTOTYPE CONTROLS (remove before launch) ===== -->
-<div class="proto" role="region" aria-label="Prototype controls">
-  <div class="proto-inner">
-    <span class="tag">Prototype</span>
-    <label for="dev-day">Day</label>
-    <select id="dev-day"></select>
-    <button type="button" id="dev-reset">Replay this day</button>
-    <button type="button" id="dev-clear">Clear all data</button>
-    <label class="toggle"><input type="checkbox" id="dev-sample" /> Sample crowd</label>
-    <span class="msg" id="dev-msg">Answers off Andre's lists score 0 here. The live game sends them to an AI judge.</span>
-  </div>
-</div>
-
-<script src="furrow-data.js"></script>
 <script>
 /* ========================================================
    1) THE FLUID BACKGROUND (copied from index.html)
@@ -591,17 +562,15 @@
 
 /* ========================================================
    3) FURROW
+   The page holds no answers. It asks the Furrow API for today's
+   prompts, sends each answer to be scored, and gets the reveal back.
    ======================================================== */
 (function () {
   "use strict";
-  const DATA = window.FURROW_DATA;
-  const BY_ID = {};
-  DATA.questions.forEach(q => { BY_ID[q.id] = q; });
 
   /* ---------- config ---------- */
-  const LAUNCH = "";              // EDIT before launch, e.g. "2026-12-01". Empty = prototype: today is Day 1.
+  const API = "__FURROW_API__";      // the Furrow API (Cloudflare Worker)
   const SECONDS = 30;
-  const DAYS = Object.keys(DATA.schedule).length;
   const SHARE_URL = "cristilloarts.com/furrow";
   const TIERS = {
     green:  { name: "Green",  word: "Exact",   emoji: "🟩" },
@@ -617,102 +586,56 @@
   ];
 
   /* ---------- storage (safe) ---------- */
-  const KEY = "furrow.v1";
-  let store = { runs: {}, devDay: null };
+  const KEY = "furrow.v2";
+  let store = { runs: {}, player: null };
   try { const raw = localStorage.getItem(KEY); if (raw) store = Object.assign(store, JSON.parse(raw)); } catch (e) {}
-  function save() { try { localStorage.setItem(KEY, JSON.stringify(store)); } catch (e) {} }
-
-  /* ---------- Toronto time ---------- */
-  const fmt = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Toronto", year: "numeric", month: "2-digit", day: "2-digit",
-                                                 hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" });
-  function toronto() {
-    const p = {}; fmt.formatToParts(new Date()).forEach(x => { p[x.type] = x.value; });
-    return { date: p.year + "-" + p.month + "-" + p.day, secs: (+p.hour % 24) * 3600 + (+p.minute) * 60 + (+p.second) };
+  if (!store.player) {
+    store.player = (window.crypto && crypto.randomUUID) ? crypto.randomUUID()
+      : "p-" + Math.random().toString(36).slice(2) + Date.now().toString(36);
   }
-  function utcOf(d) { const [y, m, dd] = d.split("-").map(Number); return Date.UTC(y, m - 1, dd); }
-  const launchDate = LAUNCH || toronto().date;
-  function realDay() { return Math.round((utcOf(toronto().date) - utcOf(launchDate)) / 864e5) + 1; }
-  function currentDay() { return store.devDay || realDay(); }
-  function dateLabel(day) {
-    return new Date(utcOf(launchDate) + (day - 1) * 864e5)
-      .toLocaleDateString("en-CA", { timeZone: "UTC", weekday: "long", month: "long", day: "numeric" });
+  function save() { try { localStorage.setItem(KEY, JSON.stringify(store)); } catch (e) {} }
+  save();
+
+  /* ---------- API ---------- */
+  async function api(path, payload) {
+    const ctrl = new AbortController(), t = setTimeout(() => ctrl.abort(), 20000);
+    try {
+      const res = await fetch(API + path, payload === undefined ? { signal: ctrl.signal } : {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload), signal: ctrl.signal,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw Object.assign(new Error(data.message || "Furrow couldn't answer that request."), { code: data.error });
+      return data;
+    } catch (e) {
+      if (e.code) throw e;
+      throw new Error("Couldn't reach Furrow. Check your connection and try again.");
+    } finally { clearTimeout(t); }
+  }
+
+  /* ---------- today ---------- */
+  let TODAY = null, resetAt = 0;
+  async function loadToday() {
+    TODAY = await api("/api/today");
+    resetAt = Date.now() + TODAY.resetsIn * 1000;
+    return TODAY;
+  }
+  const currentDay = () => TODAY.day;
+  function dateLabel(iso) {
+    if (!iso) return "";
+    const [y, m, d] = iso.split("-").map(Number);
+    return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("en-CA", { timeZone: "UTC", weekday: "long", month: "long", day: "numeric" });
   }
   function countdownText() {
-    let s = Math.max(0, 86400 - toronto().secs);
+    let s = Math.max(0, Math.round((resetAt - Date.now()) / 1000));
     const h = Math.floor(s / 3600); s -= h * 3600; const m = Math.floor(s / 60); s -= m * 60;
     return [h, m, s].map(n => String(n).padStart(2, "0")).join(":");
   }
-
-  /* ---------- scoring engine (Section 4, steps 1, 3, 4) ---------- */
-  function norm(s) {
-    const raw = String(s || "").replace(/️/g, "").trim();
-    let n = raw.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
-      .replace(/&/g, " and ").replace(/['’`]/g, "").replace(/[^a-z0-9]+/g, " ").trim().replace(/\s+/g, " ");
-    n = n.replace(/^the /, "");
-    return n || raw;                      // emoji-only answers keep their raw form
-  }
-  const compact = n => n.replace(/ /g, "");
-  function lev(a, b) {
-    if (a === b) return 0;
-    let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
-    for (let i = 1; i <= a.length; i++) {
-      const cur = [i];
-      for (let j = 1; j <= b.length; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
-      prev = cur;
-    }
-    return prev[b.length];
-  }
-  const entryCache = {};
-  function entries(q) {
-    if (entryCache[q.id]) return entryCache[q.id];
-    const out = [];
-    const add = (tier, pos, text) => text.split("|").map(t => t.trim()).filter(Boolean)
-      .forEach(t => { const n = norm(t); out.push({ tier, pos, n, c: compact(n) }); });
-    q.green.split(";").forEach(t => add("green", 0, t));
-    ["yellow", "orange"].forEach(tier =>
-      q[tier].examples.split(";").map(t => t.trim()).filter(Boolean).forEach((t, i) => add(tier, i, t)));
-    return (entryCache[q.id] = out);
-  }
-  function allowance(len) { return len <= 4 ? 0 : len <= 7 ? 1 : len < 14 ? 2 : Math.floor(len * 0.15); }
-  const digits = s => (s.match(/\d+/g) || []).join(",");
-  function matchText(q, n) {
-    const list = entries(q), c = compact(n);
-    for (const e of list) if (e.n === n || e.c === c) return e;                        // exact
-    let best = null;
-    for (const e of list) if (e.c.length >= 4 && (" " + n + " ").includes(" " + e.n + " ") && (!best || e.n.length > best.n.length)) best = e;
-    if (best) return best;                                                              // answer contains a list entry
-    let bestD = Infinity;
-    for (const e of list) {                                                             // typo match
-      if (digits(e.c) !== digits(c)) continue;
-      const d = lev(c, e.c), len = Math.max(c.length, e.c.length);
-      if (d <= allowance(len) && d < bestD) { best = e; bestD = d; }
-    }
-    return best;
-  }
-  function points(e) {
-    if (e.tier === "green") return 100;
-    if (e.tier === "yellow") return Math.max(70, 90 - 5 * e.pos);
-    return Math.max(40, 60 - 5 * e.pos);
-  }
-  function score(q, answer) {
-    const n = norm(answer);
-    if (!n) return { tier: "red", points: 0, why: "blank" };
-    let e = matchText(q, n);
-    if (!e) {                                     // several answers: only the first is scored
-      const first = String(answer).split(/\s*(?:,|;|\/|\band\b|\bor\b|&)\s*/i).map(s => s.trim()).filter(Boolean)[0];
-      if (first && norm(first) !== n) e = matchText(q, norm(first));
-    }
-    if (!e) return { tier: "red", points: 0, why: "unlisted" };
-    return { tier: e.tier, points: points(e), why: "list" };
-  }
-  window.FURROW_SCORE = (id, a) => score(BY_ID[id], a);   // handy for testing in the console
 
   /* ---------- run state ---------- */
   function run(day) {
     if (!store.runs[day]) store.runs[day] = { idx: 0, phase: "new", results: [], deadline: null, draft: "" };
     return store.runs[day];
   }
-  const qsFor = day => (DATA.schedule[day] || []).map(id => BY_ID[id]);
   const total = r => r.results.reduce((s, x) => s + x.points, 0);
   const rankOf = s => RANKS.find(r => s >= r[0]);
   function doneDays() { return Object.keys(store.runs).map(Number).filter(d => store.runs[d].phase === "done").sort((a, b) => b - a); }
@@ -740,22 +663,34 @@
       el.appendChild(g);
     }
   }
+  function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
 
   /* ---------- HOME ---------- */
+  function homeMessage(text, retry) {
+    $("home-closed").hidden = !text;
+    $("home-closed").innerHTML = "";
+    if (!text) return;
+    $("home-closed").append(text);
+    if (retry) {
+      const b = document.createElement("button"); b.type = "button"; b.className = "linkish"; b.textContent = "Try again";
+      b.style.marginLeft = "8px"; b.addEventListener("click", boot); $("home-closed").append(b);
+    }
+  }
   function renderHome() {
-    const day = currentDay(), r = store.runs[day];
-    $("home-day").textContent = "Day " + day;
-    $("home-date").textContent = dateLabel(day);
+    const ready = !!TODAY;
+    const day = ready ? currentDay() : 0, r = ready ? store.runs[day] : null;
+    $("home-day").textContent = ready && day >= 1 ? "Day " + day : "";
+    $("home-date").textContent = ready ? dateLabel(TODAY.date) : "";
     const done = doneDays();
     $("st-streak").textContent = streak(day);
     $("st-played").textContent = done.length;
     $("st-best").textContent = done.length ? Math.max(...done.map(d => total(store.runs[d]))) : "–";
 
-    const open = day >= 1 && day <= DAYS;
-    $("home-closed").hidden = open;
-    if (!open) $("home-closed").textContent = day < 1 ? "Furrow starts soon. Check back on launch day."
-      : "That's all 20 days of Furrow for now. New prompts are on the way.";
+    const open = ready && TODAY.open;
     const finished = r && r.phase === "done";
+    if (ready && !open) homeMessage(day < 1 ? "Furrow starts soon. Check back on launch day."
+      : "That's all " + TODAY.days + " days of Furrow for now. New prompts are on the way.");
+    else if (ready) homeMessage("");
     $("home-ready").hidden = !open || finished;
     $("home-done").hidden = !finished;
     if (finished) { $("hd-score").textContent = total(r); drawField($("hd-field"), r, -1); }
@@ -773,9 +708,9 @@
   }
 
   /* ---------- PROMPT ---------- */
-  let tick = null;
+  let tick = null, sending = false;
   function startPrompt() {
-    const day = currentDay(), r = run(day), q = qsFor(day)[r.idx];
+    const day = currentDay(), r = run(day), q = TODAY.questions[r.idx];
     if (r.phase === "new") r.phase = "prompt";
     if (!r.deadline) { r.deadline = Date.now() + SECONDS * 1000; r.draft = ""; }
     save();
@@ -783,7 +718,8 @@
     $("pr-theme").textContent = q.theme;
     $("pr-text").textContent = q.prompt;
     drawField($("pr-field"), r, r.idx);
-    const input = $("answer"); input.value = r.draft || "";
+    setSending(false, "");
+    const input = $("answer"); input.value = r.draft || ""; input.readOnly = false;
     show("prompt");
     input.focus({ preventScroll: true });
     clearInterval(tick);
@@ -792,39 +728,54 @@
       $("timer-fill").style.transform = "scaleX(" + (left / (SECONDS * 1000)) + ")";
       $("timer-num").textContent = Math.ceil(left / 1000);
       $("timer").classList.toggle("low", left <= 10000);
-      if (left <= 0) submit();
+      if (left <= 0) { clearInterval(tick); input.readOnly = true; submit(); }
     };
     update(); tick = setInterval(update, 100);
   }
+  function setSending(on, msg) {
+    sending = on;
+    $("submit-btn").disabled = on;
+    $("submit-btn").textContent = on ? "Scoring…" : "Submit";
+    $("pr-hint").textContent = msg || "Enter submits. When time runs out, whatever is in the box is submitted.";
+    $("pr-hint").classList.toggle("err", !!msg);
+  }
   $("answer").addEventListener("input", e => { const r = run(currentDay()); r.draft = e.target.value; save(); });
   $("answer-form").addEventListener("submit", e => { e.preventDefault(); submit(); });
-  function submit() {
-    clearInterval(tick);
+  async function submit() {
+    if (sending) return;
     const day = currentDay(), r = run(day);
     if (r.phase !== "prompt") return;
-    const q = qsFor(day)[r.idx], answer = $("answer").value.trim();
-    const res = score(q, answer);
-    r.results[r.idx] = { id: q.id, answer, tier: res.tier, points: res.points, why: res.why };
-    r.phase = "reveal"; r.deadline = null; r.draft = "";
-    save(); showReveal();
+    const q = TODAY.questions[r.idx], answer = $("answer").value.trim();
+    setSending(true, "");
+    try {
+      const res = await api("/api/answer", { day, id: q.id, answer });
+      clearInterval(tick);
+      r.results[r.idx] = { id: q.id, prompt: q.prompt, theme: q.theme, answer, tier: res.tier, points: res.points,
+                           source: res.source, andre: res.andre, reveal: res.reveal || "" };
+      r.phase = "reveal"; r.deadline = null; r.draft = "";
+      save(); setSending(false, ""); showReveal();
+    } catch (e) {
+      setSending(false, e.message + (e.code ? "" : " Press Submit to send your answer again."));
+    }
   }
 
   /* ---------- REVEAL ---------- */
   function showReveal() {
-    const day = currentDay(), r = run(day), q = qsFor(day)[r.idx], res = r.results[r.idx], t = TIERS[res.tier];
+    const r = run(currentDay()), res = r.results[r.idx], t = TIERS[res.tier];
     $("rv-count").textContent = "Prompt " + (r.idx + 1) + " of 5";
-    $("rv-theme").textContent = q.theme;
-    $("rv-prompt").textContent = q.prompt;
+    $("rv-theme").textContent = res.theme;
+    $("rv-prompt").textContent = res.prompt;
     drawField($("rv-field"), r, -1);
     $("rv-badge").dataset.tier = res.tier;
     $("rv-badge").textContent = t.name + " · " + t.word;
     $("rv-points").innerHTML = res.points + "<small>pts</small>";
     $("rv-yours").textContent = res.answer || "(no answer)";
-    $("rv-andre").textContent = q.answer;
-    $("rv-story").textContent = q.reveal || "Andre's story for this one is still being written.";
-    $("rv-story").classList.toggle("placeholder", !q.reveal);
-    const note = res.why === "blank" ? "No answer was in the box when time ran out."
-      : res.why === "unlisted" ? "That answer isn't on Andre's lists. In the live game an AI judge scores answers like this, so a near miss could still earn points."
+    $("rv-andre").textContent = res.andre;
+    $("rv-story").textContent = res.reveal || "Andre's story for this one is coming soon.";
+    $("rv-story").classList.toggle("placeholder", !res.reveal);
+    const note = res.source === "blank" ? "No answer was given, so this one counts as a miss."
+      : res.source === "judge_unavailable" ? "Our judge couldn't score that answer just now, so it counts as a miss."
+      : res.source === "blocked" ? "That answer can't be scored."
       : "";
     $("rv-note").hidden = !note; $("rv-note").textContent = note;
     $("next-btn").textContent = r.idx < 4 ? "Next prompt →" : "See my results →";
@@ -843,107 +794,54 @@
     return "Furrow #" + day + " · " + s + "/500 · " + rankOf(s)[1] + "\n" + r.results.map(x => TIERS[x.tier].emoji).join("") + "\n" + SHARE_URL;
   }
   function showResults() {
-    const day = currentDay(), r = run(day), s = total(r), rk = rankOf(s), qs = qsFor(day);
+    const day = currentDay(), r = run(day), s = total(r), rk = rankOf(s);
     $("rs-day").textContent = "#" + day;
     $("rs-score").textContent = s;
     $("rs-rank").textContent = rk[1];
     $("rs-meaning").textContent = rk[2];
-    $("rs-list").innerHTML = r.results.map((x, i) =>
-      '<li><span class="sq" data-tier="' + x.tier + '"></span><span class="p">' + esc(qs[i].prompt) + '</span><span class="s">' +
+    $("rs-list").innerHTML = r.results.map(x =>
+      '<li><span class="sq" data-tier="' + x.tier + '"></span><span class="p">' + esc(x.prompt) + '</span><span class="s">' +
       TIERS[x.tier].word + " · " + x.points + '</span></li>').join("");
     $("share-status").textContent = ""; $("share-out").hidden = true;
     show("results");
-    Crowd.submit(day, s);
-    Crowd.watch(day, s);
+    Crowd.load(day, s);
   }
+  $("share-btn").addEventListener("click", () => {
+    const day = currentDay(), text = shareText(day, run(day));
+    const fallback = () => { const o = $("share-out"); o.value = text; o.hidden = false; o.focus(); o.select();
+                             $("share-status").textContent = "Copy the text below to share it."; };
+    try {
+      navigator.clipboard.writeText(text).then(() => { $("share-status").textContent = "Copied. Paste it into any chat."; }, fallback);
+    } catch (e) { fallback(); }
+  });
+  $("home-btn").addEventListener("click", renderHome);
+  document.addEventListener("click", e => { if (e.target.closest("[data-show-results]")) showResults(); });
 
-  /* ---------- CROWD: everyone's scores for the day ----------
-     Prototype: shared scores live in the artifact's db (one doc per player,
-     scores/<playerId> = { days: { "<day>": score } }). With no db (e.g. the
-     file opened directly) or with "Sample crowd" on, a seeded sample is used
-     and labelled as such. LIVE SITE: replace with GET/POST /api/scores. */
+  /* ---------- CROWD: everyone's scores for the day ---------- */
   const Crowd = (function () {
-    let db = null, me = null, unsub = null, watching = null, real = [], ready = false, sampleOn = false;
-    const MIN_FOR_CURVE = 2;
-    try { sampleOn = localStorage.getItem("furrow.sample") === "1"; } catch (e) {}
-    $("dev-sample").checked = sampleOn;
-    $("dev-sample").addEventListener("change", e => {
-      sampleOn = e.target.checked;
-      try { localStorage.setItem("furrow.sample", sampleOn ? "1" : "0"); } catch (err) {}
-      if (watching) draw();
-    });
-    const init = (async () => {
-      try {
-        if (!window.claude || !window.claude.use) return;
-        const [d, u] = await Promise.all([window.claude.use("db"), window.claude.use("user")]);
-        if (!d || !u) return;
-        me = await u.id(); db = d;
-      } catch (e) { db = null; }
-    })();
-
-    function sample(day, mine) {
-      let seed = day * 9973 + 17;
-      const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
-      const out = [];
-      for (let i = 0; i < 179; i++) {
-        const z = Math.sqrt(-2 * Math.log(rnd() || 1e-9)) * Math.cos(2 * Math.PI * rnd());
-        out.push(Math.max(0, Math.min(500, Math.round((290 + 72 * z) / 5) * 5)));
-      }
-      out.push(mine);
-      return out;
-    }
-
-    async function submit(day, score) {
-      await init;
-      if (!db || !me) return;
+    let shown = null;
+    async function load(day, mine) {
+      shown = { day, mine, scores: [mine] };
+      $("dist-src").textContent = "Loading scores…"; $("dist-src").className = "dist-src";
+      draw();
       const r = run(day);
-      if (r.submitted) return;
       try {
-        const ref = db.doc("scores/" + me);
-        const snap = await ref.get();
-        const days = Object.assign({}, (snap.exists && snap.data().days) || {});
-        if (days[day] === undefined) { days[day] = score; await ref.set({ days }); }
-        r.submitted = true; save();
-      } catch (e) { /* read-only viewer or offline: chart still shows others */ }
-    }
-
-    async function watch(day, mine) {
-      watching = { day, mine };
-      ready = false; real = []; draw();
-      await init;
-      if (unsub) { unsub(); unsub = null; }
-      if (!db) { ready = true; draw(); return; }
-      const timer = setTimeout(() => { ready = true; draw(); }, 10000);
-      unsub = db.collection("scores").onSnapshot(snap => {
-        clearTimeout(timer);
-        real = snap.docs.map(d => ({ id: d.id, v: ((d.data() || {}).days || {})[day] }))
-          .filter(x => typeof x.v === "number" && x.v >= 0 && x.v <= 500);
-        if (me && !real.some(x => x.id === me)) real.push({ id: me, v: mine });   // count your run before the write lands
-        ready = true; draw();
-      }, () => { clearTimeout(timer); ready = true; draw(); });
-    }
-
-    function draw() {
-      if (!watching) return;
-      const { day, mine } = watching;
-      let scores, label, cls = "";
-      if (sampleOn || !db) {
-        scores = sample(day, mine);
-        label = "Sample data · " + scores.length + " made-up players";
-        cls = "sample";
-      } else if (!ready) {
-        scores = [mine]; label = "Loading scores…";
-      } else {
-        scores = real.map(x => x.v);
-        if (!scores.length) scores = [mine];
-        label = scores.length === 1 ? "Only you so far today" : scores.length + " players today";
+        if (!r.submitted) { await api("/api/score", { day, player: store.player, score: mine }); r.submitted = true; save(); }
+      } catch (e) { /* the chart can still show everyone else */ }
+      try {
+        const data = await api("/api/scores?day=" + day);
+        const scores = (data.scores || []).filter(v => Number.isInteger(v));
+        if (!r.submitted) scores.push(mine);
+        shown.scores = scores.length ? scores : [mine];
+        $("dist-src").textContent = shown.scores.length === 1 ? "Only you so far today" : shown.scores.length + " players today";
+      } catch (e) {
+        $("dist-src").textContent = "Couldn't load everyone's scores right now";
       }
-      $("dist-src").textContent = label;
-      $("dist-src").className = "dist-src " + cls;
-      renderDistribution($("dist-chart"), scores, mine, scores.length >= MIN_FOR_CURVE);
+      draw();
     }
-    addEventListener("resize", () => { if (watching && !$("results").hidden) draw(); });
-    return { submit, watch };
+    function draw() { if (shown) renderDistribution($("dist-chart"), shown.scores, shown.mine, shown.scores.length >= 2); }
+    addEventListener("resize", () => { if (shown && !$("results").hidden) draw(); });
+    return { load };
   })();
 
   function renderDistribution(el, scores, mine, curve) {
@@ -1025,17 +923,7 @@
     });
     svgEl.addEventListener("pointerleave", hide);
   }
-  function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
-  $("share-btn").addEventListener("click", () => {
-    const day = currentDay(), text = shareText(day, run(day));
-    const fallback = () => { const o = $("share-out"); o.value = text; o.hidden = false; o.focus(); o.select();
-                             $("share-status").textContent = "Copy the text below to share it."; };
-    try {
-      navigator.clipboard.writeText(text).then(() => { $("share-status").textContent = "Copied. Paste it into any chat."; }, fallback);
-    } catch (e) { fallback(); }
-  });
-  $("home-btn").addEventListener("click", renderHome);
-  document.addEventListener("click", e => { if (e.target.closest("[data-show-results]")) showResults(); });
+
 
   /* ---------- HOW TO PLAY ---------- */
   let lastFocus = null;
@@ -1051,23 +939,27 @@
     if (r.phase === "reveal") showReveal(); else startPrompt();
   });
 
-  /* ---------- countdown ---------- */
-  setInterval(() => document.querySelectorAll("[data-countdown]").forEach(el => { el.textContent = countdownText(); }), 1000);
-  document.querySelectorAll("[data-countdown]").forEach(el => { el.textContent = countdownText(); });
-
-  /* ---------- PROTOTYPE controls ---------- */
-  const sel = $("dev-day");
-  for (let d = 1; d <= DAYS; d++) { const o = document.createElement("option"); o.value = d; o.textContent = "Day " + d; sel.appendChild(o); }
-  sel.value = String(Math.min(Math.max(currentDay(), 1), DAYS));
-  sel.addEventListener("change", () => { clearInterval(tick); store.devDay = +sel.value; save(); boot(); });
-  $("dev-reset").addEventListener("click", () => { clearInterval(tick); delete store.runs[currentDay()]; save(); boot(); });
-  $("dev-clear").addEventListener("click", () => { clearInterval(tick); store = { runs: {}, devDay: null }; save(); sel.value = String(Math.min(Math.max(currentDay(), 1), DAYS)); boot(); });
+  /* ---------- countdown; a new day loads itself at midnight ---------- */
+  setInterval(() => {
+    document.querySelectorAll("[data-countdown]").forEach(el => { el.textContent = countdownText(); });
+    if (TODAY && resetAt && Date.now() > resetAt + 2000 && !$("home").hidden) { resetAt = 0; boot(); }
+  }, 1000);
 
   /* ---------- boot: resume mid-run if needed ---------- */
-  function boot() {
+  async function boot() {
+    renderHome();
+    $("play-btn").disabled = true;
+    try {
+      await loadToday();
+    } catch (e) {
+      TODAY = null; renderHome(); $("home-ready").hidden = true;
+      homeMessage(e.message, true);
+      return;
+    }
+    $("play-btn").disabled = false;
     const r = store.runs[currentDay()];
-    if (r && r.phase === "prompt") startPrompt();
-    else if (r && r.phase === "reveal") showReveal();
+    if (TODAY.open && r && r.phase === "prompt") startPrompt();
+    else if (TODAY.open && r && r.phase === "reveal") showReveal();
     else renderHome();
   }
   boot();
