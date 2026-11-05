@@ -1,0 +1,969 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>Furrow: Daily Game</title>
+<meta name="claude:viewport-fit-sides" content="cover" />
+<meta name="description" content="Furrow, a daily guessing game about Andre Cristillo. Five prompts, 30 seconds each, one run per day." />
+<!--
+  ============================================================
+  FURROW — daily guessing game
+  Home -> 5 x (Prompt -> Reveal) -> Results, plus How to Play.
+  Shares the site theme: oil-fluid background, dot cursor,
+  Space Grotesk + Inter, dark ground.
+
+  The page holds no answers. Prompts, scoring, reveals and the
+  score chart all come from the Furrow API (furrow-api/ folder,
+  a Cloudflare Worker). Search for API to see its address.
+  ============================================================
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+<style>
+  /* Layout: one centred play column over the site's fluid background; a five-groove
+     "field" strip tracks the run, each groove filling with its tier colour. */
+  :root {
+    --bg:      #121212;
+    --panel:   rgba(22,22,24,0.78);
+    --ink:     #FFFFFF;
+    --muted:   rgba(255,255,255,0.62);
+    --faint:   rgba(255,255,255,0.08);
+    --line:    rgba(255,255,255,0.16);
+    --accent:  #D91842;
+    --t-green:  #3DBE6E;
+    --t-yellow: #F2C230;
+    --t-orange: #F08A3C;
+    --t-red:    #E5484D;
+    --on-tier:  #121212;
+    --font-display: "Space Grotesk", "Helvetica Neue", Arial, sans-serif;
+    --font-body:    "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --maxw: 1160px;
+    --playw: 640px;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  [hidden] { display: none !important; }
+  body {
+    font-family: var(--font-body); color: var(--ink); background: var(--bg);
+    line-height: 1.55; -webkit-font-smoothing: antialiased; overflow-x: hidden;
+    min-height: 100vh; display: flex; flex-direction: column;
+  }
+  body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 30; background: var(--bg); }
+  a { color: inherit; text-decoration: none; }
+  h1, h2, h3 { font-family: var(--font-display); font-weight: 700; letter-spacing: -0.02em; line-height: 1.05; text-wrap: balance; }
+  button { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+
+  /* background layers (same as the rest of the site) */
+  #fluid { position: fixed; inset: 0; width: 100%; height: 100%; z-index: -2; display: block; pointer-events: none; }
+  .veil  { position: fixed; inset: 0; z-index: -1; pointer-events: none;
+           background: radial-gradient(120% 90% at 50% 0%, rgba(0,0,0,0.0), rgba(0,0,0,0.45)); }
+  .cursor-dot { position: fixed; top: 0; left: 0; width: 9px; height: 9px; border-radius: 50%;
+                background: var(--accent); z-index: 9999; pointer-events: none;
+                transform: translate(-50%,-50%); transition: opacity 0.2s ease; will-change: transform; }
+  html.hide-cursor, html.hide-cursor * { cursor: none !important; }
+
+  .wrap { width: 100%; max-width: var(--maxw); margin-inline: auto;
+          padding-left: max(20px, env(safe-area-inset-left, 0px)); padding-right: max(20px, env(safe-area-inset-right, 0px)); }
+
+  /* header */
+  header { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20; background: rgba(18,18,18,0.55);
+           backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
+  nav { display: flex; align-items: center; justify-content: space-between; height: 60px; }
+  .logo { font-family: var(--font-display); font-weight: 700; font-size: 0.95rem; }
+  .back { font-size: 0.78rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+  .back:hover { color: var(--ink); }
+
+  /* play column */
+  main { flex: 1; }
+  .play { max-width: var(--playw); margin-inline: auto; padding-block: 48px 96px; display: flex; flex-direction: column; gap: 28px; }
+
+  .eyebrow { font-family: var(--font-display); font-size: 0.74rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted);
+             display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; }
+  .eyebrow b { color: var(--ink); font-weight: 600; }
+  .eyebrow .chip { border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; letter-spacing: 0.08em; }
+
+  /* the field: five grooves, one per prompt */
+  .field { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+  .groove { height: 30px; border-radius: 6px; background: var(--faint); border: 1px solid var(--line);
+            display: flex; align-items: center; justify-content: center; overflow: hidden;
+            font-family: var(--font-display); font-size: 0.7rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+            color: var(--muted); font-variant-numeric: tabular-nums; transition: background 0.4s ease, border-color 0.4s ease; }
+  .groove.current { border-color: var(--ink); color: var(--ink); }
+  .groove[data-tier] { color: var(--on-tier); border-color: transparent; }
+  [data-tier="green"]  { background: var(--t-green); }
+  [data-tier="yellow"] { background: var(--t-yellow); }
+  [data-tier="orange"] { background: var(--t-orange); }
+  [data-tier="red"]    { background: var(--t-red); }
+
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: clamp(22px, 5vw, 36px);
+           backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); display: flex; flex-direction: column; gap: 22px; }
+
+  /* buttons */
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 10px; cursor: pointer;
+         font-family: var(--font-display); font-size: 1rem; font-weight: 600; letter-spacing: 0.01em;
+         border-radius: 999px; padding: 14px 28px; border: 1px solid var(--ink); background: var(--ink); color: var(--bg);
+         transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease; }
+  .btn:hover { background: var(--accent); border-color: var(--accent); color: var(--ink); }
+  .btn.ghost { background: transparent; color: var(--ink); border-color: var(--line); }
+  .btn.ghost:hover { border-color: var(--accent); background: var(--accent); }
+  .btn:disabled { opacity: 0.4; pointer-events: none; }
+  .linkish { background: none; border: 0; cursor: pointer; color: var(--muted); font-size: 0.86rem; text-decoration: underline; text-underline-offset: 3px; }
+  .linkish:hover { color: var(--ink); }
+  .row { display: flex; flex-wrap: wrap; gap: 12px 18px; align-items: center; }
+
+  /* HOME */
+  .title h1 { font-size: clamp(3.4rem, 14vw, 6.5rem); line-height: 0.9; }
+  .title h1 span { color: var(--accent); }
+  .title p { color: var(--muted); font-size: 1.08rem; max-width: 30em; margin-top: 18px; }
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  .stat { background: var(--bg); padding: 14px 16px; display: flex; flex-direction: column; gap: 2px; }
+  .stat .k { font-size: 0.7rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+  .stat .v { font-family: var(--font-display); font-size: 1.6rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+  /* PROMPT */
+  .prompt-text { font-family: var(--font-display); font-weight: 600; font-size: clamp(1.6rem, 5.4vw, 2.5rem); line-height: 1.12; letter-spacing: -0.015em; text-wrap: balance; }
+  .timer { display: flex; align-items: center; gap: 14px; }
+  .timer-track { flex: 1; height: 6px; border-radius: 999px; background: var(--faint); overflow: hidden; }
+  .timer-fill { height: 100%; width: 100%; background: var(--ink); transform-origin: left center; }
+  .timer.low .timer-fill { background: var(--accent); }
+  .timer-num { font-family: var(--font-display); font-weight: 600; font-variant-numeric: tabular-nums; min-width: 2.6ch; text-align: right; }
+  .timer.low .timer-num { color: var(--accent); }
+  .answer-form { display: flex; gap: 10px; flex-wrap: wrap; }
+  .answer-form input { flex: 1 1 220px; min-width: 0; font: inherit; font-size: 1.1rem; color: var(--ink); background: rgba(0,0,0,0.35);
+                       border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
+  .answer-form input:focus { outline: none; border-color: var(--ink); }
+  .hint { font-size: 0.82rem; color: var(--muted); }
+  .hint.err { color: var(--t-orange); }
+
+  /* REVEAL */
+  .verdict { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+  .badge { display: inline-flex; align-items: center; gap: 10px; border-radius: 999px; padding: 8px 16px 8px 10px;
+           font-family: var(--font-display); font-weight: 700; font-size: 0.95rem; color: var(--on-tier); }
+  .badge::before { content: ""; width: 14px; height: 14px; border-radius: 4px; background: rgba(0,0,0,0.25); }
+  .points { font-family: var(--font-display); font-size: clamp(2.4rem, 9vw, 3.4rem); font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1; }
+  .points small { font-size: 0.4em; color: var(--muted); font-weight: 500; margin-left: 4px; }
+  .pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .pair > div { border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; min-width: 0; }
+  .pair .k { font-size: 0.7rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+  .pair .v { font-family: var(--font-display); font-weight: 600; font-size: 1.15rem; margin-top: 4px; overflow-wrap: anywhere; }
+  .pair .andre { border-color: var(--t-green); }
+  .story { color: var(--muted); font-size: 1rem; max-width: 34em; }
+  .story.placeholder { font-style: italic; }
+  .note { font-size: 0.86rem; color: var(--muted); border-left: 2px solid var(--line); padding-left: 12px; }
+
+  /* RESULTS */
+  .total { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .total .n { font-family: var(--font-display); font-weight: 700; font-size: clamp(3.6rem, 16vw, 6rem); line-height: 0.9; font-variant-numeric: tabular-nums; }
+  .total .of { font-family: var(--font-display); color: var(--muted); font-size: 1.4rem; }
+  .rank h2 { font-size: clamp(1.8rem, 6vw, 2.4rem); }
+  .rank p { color: var(--muted); margin-top: 4px; }
+  .breakdown { list-style: none; display: flex; flex-direction: column; gap: 8px; }
+  .breakdown li { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; gap: 12px; align-items: center; font-size: 0.95rem; }
+  .breakdown .sq { width: 18px; height: 18px; border-radius: 4px; }
+  .breakdown .p { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .breakdown .s { font-family: var(--font-display); font-weight: 600; font-variant-numeric: tabular-nums; color: var(--muted); }
+  .share-out { width: 100%; font: inherit; font-size: 0.9rem; color: var(--ink); background: rgba(0,0,0,0.35); border: 1px solid var(--line); border-radius: 10px; padding: 12px; resize: none; }
+  .countdown { font-family: var(--font-display); font-variant-numeric: tabular-nums; }
+  .status { font-size: 0.86rem; color: var(--t-green); min-height: 1.3em; }
+
+  /* DISTRIBUTION: everyone's scores for the day */
+  .dist { display: flex; flex-direction: column; gap: 14px; border-top: 1px solid var(--line); padding-top: 22px; }
+  .dist-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px 16px; flex-wrap: wrap; }
+  .dist-head h3 { font-size: 1.15rem; letter-spacing: -0.01em; }
+  .dist-src { font-size: 0.78rem; color: var(--muted); }
+  .dist-src.sample { color: var(--t-yellow); }
+  .dist-chart { position: relative; width: 100%; min-height: 200px; touch-action: pan-y; }
+  .dist-chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .dist-chart .axis text { fill: var(--muted); font-family: var(--font-body); font-size: 11px; font-variant-numeric: tabular-nums; }
+  .dist-chart .axis line { stroke: var(--line); stroke-width: 1; }
+  .dist-chart .curve { fill: none; stroke: var(--ink); stroke-width: 2; stroke-linejoin: round; }
+  .dist-chart .area { fill: var(--ink); fill-opacity: 0.08; stroke: none; }
+  .dist-chart .mk line { stroke-width: 2; }
+  .dist-chart .mk text { font-family: var(--font-display); font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .dist-chart .mk-avg line { stroke: var(--muted); stroke-dasharray: 4 4; }
+  .dist-chart .mk-avg text { fill: var(--muted); }
+  .dist-chart .mk-top line { stroke: var(--ink); stroke-opacity: 0.55; }
+  .dist-chart .mk-top text { fill: var(--ink); }
+  .dist-chart .mk-you line { stroke: var(--accent); }
+  .dist-chart .mk-you text { fill: var(--ink); }
+  .dist-chart .mk-you circle { fill: var(--accent); stroke: var(--bg); stroke-width: 2; }
+  .dist-chart .cross { stroke: var(--ink); stroke-opacity: 0.35; stroke-width: 1; }
+  .dist-chart .band { fill: var(--ink); fill-opacity: 0.06; }
+  .dist-tip { position: absolute; top: 0; pointer-events: none; background: var(--bg); border: 1px solid var(--line); border-radius: 8px;
+              padding: 6px 10px; font-size: 0.8rem; white-space: nowrap; transform: translateX(-50%); font-variant-numeric: tabular-nums; }
+  .dist-tip b { font-family: var(--font-display); }
+  .dist-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  .dist-stats div { background: var(--bg); padding: 12px 14px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .dist-stats .k { font-size: 0.7rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); display: flex; align-items: center; gap: 7px; }
+  .dist-stats .k i { display: inline-block; width: 14px; height: 0; border-top: 2px solid var(--muted); }
+  .dist-stats .k i.dash { border-top-style: dashed; }
+  .dist-stats .k i.you { border-top-color: var(--accent); }
+  .dist-stats .k i.top { border-top-color: var(--ink); opacity: 0.55; }
+  .dist-stats .v { font-family: var(--font-display); font-size: 1.35rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .dist-stats .sub { font-size: 0.78rem; color: var(--muted); }
+
+  /* history */
+  .history h3 { font-size: 0.74rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); font-weight: 600; margin-bottom: 10px; }
+  .history ol { list-style: none; display: flex; flex-direction: column; border-top: 1px solid var(--line); }
+  .history li { display: grid; grid-template-columns: 4.5em 1fr auto; gap: 12px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 0.92rem; font-variant-numeric: tabular-nums; }
+  .history .mini { display: flex; gap: 4px; }
+  .history .mini i { width: 12px; height: 12px; border-radius: 3px; display: block; }
+  .history .d { color: var(--muted); }
+
+  /* HOW TO PLAY overlay */
+  .overlay { position: fixed; inset: 0; z-index: 50; background: rgba(8,8,10,0.86); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+             display: flex; align-items: flex-start; justify-content: center; overflow-y: auto;
+             padding: calc(40px + env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) calc(40px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
+  .overlay .panel { max-width: 560px; width: 100%; background: var(--bg); }
+  .overlay h2 { font-size: 2rem; }
+  .rules { padding-left: 1.3em; display: flex; flex-direction: column; gap: 8px; color: var(--muted); }
+  .rules li::marker { font-family: var(--font-display); color: var(--ink); }
+  .tiers { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
+  .tiers td { padding: 9px 0; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  .tiers td:last-child { text-align: right; font-family: var(--font-display); font-variant-numeric: tabular-nums; color: var(--muted); }
+  .tiers .sw { display: inline-block; width: 14px; height: 14px; border-radius: 4px; vertical-align: -2px; margin-right: 10px; }
+  .ranks { font-size: 0.9rem; color: var(--muted); }
+  .ranks b { color: var(--ink); font-family: var(--font-display); font-weight: 600; }
+
+  .screen-in { animation: rise 0.35s ease both; }
+  @keyframes rise { from { opacity: 0.001; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+  @media (max-width: 520px) {
+    .pair { grid-template-columns: 1fr; }
+    .groove { font-size: 0.6rem; letter-spacing: 0.02em; }
+    .stat .v { font-size: 1.3rem; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .screen-in { animation: none; }
+    .groove { transition: none; }
+  }
+</style>
+</head>
+<body>
+<div class="cursor-dot" id="cursor" aria-hidden="true"></div>
+<canvas id="fluid"></canvas>
+<div class="veil"></div>
+
+<header>
+  <nav class="wrap">
+    <a href="index.html" class="logo">Andre Cristillo</a>
+    <a href="index.html" class="back">← Back</a>
+  </nav>
+</header>
+
+<main class="wrap">
+  <div class="play">
+
+    <!-- ===== HOME ===== -->
+    <section id="home" hidden>
+      <div class="panel" style="background:transparent;border:0;padding:0;backdrop-filter:none;-webkit-backdrop-filter:none">
+        <div class="eyebrow"><span>Daily game</span><b id="home-day">Day 1</b><span id="home-date"></span></div>
+        <div class="title">
+          <h1>Furrow<span>.</span></h1>
+          <p>Five prompts about Andre. Type your best guess before the 30-second timer runs out. Everyone gets the same five today.</p>
+        </div>
+
+        <div class="stats" aria-label="Your stats">
+          <div class="stat"><span class="k">Streak</span><span class="v" id="st-streak">0</span></div>
+          <div class="stat"><span class="k">Played</span><span class="v" id="st-played">0</span></div>
+          <div class="stat"><span class="k">Best</span><span class="v" id="st-best">–</span></div>
+        </div>
+
+        <div id="home-ready" class="row">
+          <button class="btn" id="play-btn" type="button">Play today's Furrow →</button>
+          <button class="linkish" type="button" data-open-help>How to play</button>
+        </div>
+
+        <div id="home-done" class="panel" hidden>
+          <div class="eyebrow"><span>Today's result</span></div>
+          <div class="total"><span class="n" id="hd-score">0</span><span class="of">/ 500</span></div>
+          <div class="field" id="hd-field" aria-label="Today's five answers"></div>
+          <div class="row">
+            <button class="btn" type="button" data-show-results>See results</button>
+            <span class="hint">Next Furrow in <span class="countdown" data-countdown>--:--:--</span></span>
+          </div>
+        </div>
+
+        <div id="home-closed" class="note" hidden></div>
+
+        <div class="history" id="history" hidden>
+          <h3>Your past days</h3>
+          <ol id="history-list"></ol>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== PROMPT ===== -->
+    <section id="prompt" hidden>
+      <div class="panel">
+        <div class="eyebrow"><b id="pr-count">Prompt 1 of 5</b><span class="chip" id="pr-theme">Theme</span></div>
+        <div class="field" id="pr-field" aria-label="Progress"></div>
+        <h2 class="prompt-text" id="pr-text">…</h2>
+        <div class="timer" id="timer" role="timer" aria-label="Time left">
+          <div class="timer-track"><div class="timer-fill" id="timer-fill"></div></div>
+          <span class="timer-num" id="timer-num">30</span>
+        </div>
+        <form class="answer-form" id="answer-form" autocomplete="off" novalidate>
+          <label class="sr" for="answer">Your answer</label>
+          <input id="answer" name="answer" type="text" maxlength="80" placeholder="Type one answer" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="send" />
+          <button class="btn" type="submit" id="submit-btn">Submit</button>
+        </form>
+        <p class="hint" id="pr-hint" role="status">Enter submits. When time runs out, whatever is in the box is submitted.</p>
+      </div>
+    </section>
+
+    <!-- ===== REVEAL ===== -->
+    <section id="reveal" hidden aria-live="polite">
+      <div class="panel">
+        <div class="eyebrow"><b id="rv-count">Prompt 1 of 5</b><span class="chip" id="rv-theme">Theme</span></div>
+        <div class="field" id="rv-field" aria-label="Progress"></div>
+        <p class="hint" id="rv-prompt"></p>
+        <div class="verdict">
+          <span class="badge" id="rv-badge" data-tier="green">Green · Exact</span>
+          <span class="points" id="rv-points">100<small>pts</small></span>
+        </div>
+        <div class="pair">
+          <div><div class="k">You said</div><div class="v" id="rv-yours">—</div></div>
+          <div class="andre"><div class="k">Andre's answer</div><div class="v" id="rv-andre">—</div></div>
+        </div>
+        <p class="story" id="rv-story"></p>
+        <p class="note" id="rv-note" hidden></p>
+        <div class="row"><button class="btn" type="button" id="next-btn">Next prompt →</button></div>
+      </div>
+    </section>
+
+    <!-- ===== RESULTS ===== -->
+    <section id="results" hidden>
+      <div class="panel">
+        <div class="eyebrow"><span>Furrow</span><b id="rs-day">Day 1</b><span>complete</span></div>
+        <div class="total"><span class="n" id="rs-score">0</span><span class="of">/ 500</span></div>
+        <div class="rank"><h2 id="rs-rank">Seed</h2><p id="rs-meaning">Come back tomorrow</p></div>
+        <ul class="breakdown" id="rs-list"></ul>
+        <div class="dist" id="dist">
+          <div class="dist-head"><h3>How everyone did today</h3><span class="dist-src" id="dist-src">Loading scores…</span></div>
+          <div class="dist-chart" id="dist-chart" role="img" aria-label="Distribution of today's scores"></div>
+          <div class="dist-stats">
+            <div><span class="k"><i class="dash"></i>Average</span><span class="v" id="ds-avg">–</span></div>
+            <div><span class="k"><i class="you"></i>You placed</span><span class="v" id="ds-place">–</span><span class="sub" id="ds-place-sub"></span></div>
+            <div><span class="k"><i class="top"></i>Top score</span><span class="v" id="ds-top">–</span></div>
+          </div>
+        </div>
+        <div class="row">
+          <button class="btn" type="button" id="share-btn">Copy result</button>
+          <button class="btn ghost" type="button" id="home-btn">Back to Furrow home</button>
+        </div>
+        <p class="status" id="share-status" role="status"></p>
+        <textarea class="share-out" id="share-out" rows="3" readonly hidden aria-label="Result text to copy"></textarea>
+        <p class="hint">Next Furrow in <span class="countdown" data-countdown>--:--:--</span> (midnight, Toronto time)</p>
+      </div>
+    </section>
+  </div>
+</main>
+
+<!-- ===== HOW TO PLAY ===== -->
+<div class="overlay" id="help" hidden role="dialog" aria-modal="true" aria-labelledby="help-title">
+  <div class="panel">
+    <h2 id="help-title">How to play</h2>
+    <ol class="rules">
+      <li>Every day you get five prompts about Andre. Everyone gets the same five.</li>
+      <li>Type one answer per prompt. You have 30 seconds, and whatever is in the box when time runs out is submitted.</li>
+      <li>Get it exactly right for 100 points. Something close scores 70–90, something in the right area 40–60, and a miss 0–30.</li>
+      <li>After each answer, Andre reveals his real answer and the story behind it.</li>
+      <li>Finish all five to see your score out of 500, your rank, and a result card you can share.</li>
+      <li>One run per day. New prompts arrive at midnight Toronto time.</li>
+    </ol>
+    <table class="tiers">
+      <tbody>
+        <tr><td><span class="sw" data-tier="green"></span>Green · Exact</td><td>100</td></tr>
+        <tr><td><span class="sw" data-tier="yellow"></span>Yellow · Close</td><td>70–90</td></tr>
+        <tr><td><span class="sw" data-tier="orange"></span>Orange · Related</td><td>40–60</td></tr>
+        <tr><td><span class="sw" data-tier="red"></span>Red · Miss</td><td>0–30</td></tr>
+      </tbody>
+    </table>
+    <p class="ranks"><b>Bedrock</b> 450+ · <b>Deep Root</b> 350+ · <b>Sprout</b> 250+ · <b>Seed</b> under 250</p>
+    <div class="row"><button class="btn" type="button" id="help-close">Got it</button></div>
+  </div>
+</div>
+
+<script>
+/* ========================================================
+   1) THE FLUID BACKGROUND (copied from index.html)
+   ======================================================== */
+  (function () {
+    const canvas = document.getElementById("fluid");
+    const gl = canvas.getContext("webgl") || canvas.getContext("experimental-webgl");
+    if (!gl) { canvas.style.display = "none"; return; }
+
+    const FADE = 0.05, CUT_W = 2.5, CUT_SOFT = 12;
+    const trail = document.createElement("canvas");
+    const tctx = trail.getContext("2d");
+    function sizeTrail(){
+      trail.width = 512;
+      trail.height = Math.max(1, Math.round(512 * innerHeight / innerWidth));
+      tctx.fillStyle = "#000"; tctx.fillRect(0, 0, trail.width, trail.height);
+    }
+    sizeTrail();
+
+    let last = null;
+    addEventListener("pointermove", function(e){
+      const x = (e.clientX / innerWidth)  * trail.width;
+      const y = (e.clientY / innerHeight) * trail.height;
+      if (!last) last = { x, y };
+      // faster movement -> thinner, sharper stroke = a tapered wake
+      const speed = Math.hypot(x - last.x, y - last.y);
+      const w = Math.max(0.6, CUT_W / (1 + speed * 0.18));
+      tctx.strokeStyle = "#fff"; tctx.lineWidth = w;
+      tctx.lineCap = "round"; tctx.lineJoin = "round";
+      tctx.shadowColor = "#fff"; tctx.shadowBlur = CUT_SOFT * (w / CUT_W);
+      tctx.beginPath(); tctx.moveTo(last.x, last.y); tctx.lineTo(x, y); tctx.stroke();
+      last = { x, y };
+    });
+
+    const vertSrc = `attribute vec2 aPos; void main(){ gl_Position = vec4(aPos,0.0,1.0); }`;
+    const fragSrc = `
+      precision highp float;
+      uniform vec2  uRes; uniform float uTime; uniform sampler2D uTrail; uniform vec2 uTexel;
+
+      /* ====== TWEAK THE LOOK ====== */
+      const vec3  LIQUID    = vec3(0.0706, 0.0706, 0.0706); // #121212 base colour
+      const float FLOW_SPEED = 0.035;  // how fast the oil drifts
+      const float WARP       = 1.9;    // how curvy/marbled the flow is
+      const float RIPPLES    = 6.0;    // density of the ripple lines
+      const float LINE_SOFT  = 0.30;   // line thickness
+      const float RIPPLE     = 0.05;   // ripple lines this much LIGHTER than the base (visible on dark)
+      const float CUT_BEND   = 2.6;    // how strongly the cursor bends the flow
+
+      float hash(vec2 p){ p = fract(p*vec2(123.34,456.21)); p += dot(p,p+45.32); return fract(p.x*p.y); }
+      float noise(vec2 p){
+        vec2 i=floor(p), f=fract(p), u=f*f*(3.0-2.0*f);
+        return mix(mix(hash(i),hash(i+vec2(1,0)),u.x), mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),u.x), u.y);
+      }
+      float fbm(vec2 p){ float v=0.0,a=0.5; for(int i=0;i<5;i++){ v+=a*noise(p); p*=1.9; a*=0.5; } return v; }
+
+      void main(){
+        vec2 uv  = gl_FragCoord.xy / uRes;
+        vec2 tuv = vec2(uv.x, 1.0 - uv.y);
+        float aspect = uRes.x / uRes.y;
+        vec2 P = (uv - 0.5); P.x *= aspect;
+        float t = uTime * FLOW_SPEED;
+
+        float c  = texture2D(uTrail, tuv).r;
+        float cx = texture2D(uTrail, tuv + vec2(uTexel.x,0.0)).r - texture2D(uTrail, tuv - vec2(uTexel.x,0.0)).r;
+        float cy = texture2D(uTrail, tuv + vec2(0.0,uTexel.y)).r - texture2D(uTrail, tuv - vec2(0.0,uTexel.y)).r;
+        vec2 push = vec2(cx, cy) * CUT_BEND;
+
+        vec2 drift = vec2(0.03 * t, t);
+        vec2 q = vec2(fbm(P*1.7 + drift), fbm(P*1.7 + vec2(5.2,1.3) - drift));
+        vec2 r = vec2(fbm(P*1.7 + WARP*q + push + drift),
+                      fbm(P*1.7 + WARP*q - push + vec2(8.3,2.8)));
+        float field = fbm(P*1.7 + 2.0*r);
+
+        float bands = (field + length(r)*0.5) * RIPPLES + c * 3.0;
+        float tw = abs(fract(bands) - 0.5) * 2.0;
+        float line = smoothstep(0.0, LINE_SOFT, tw);
+
+        vec3 col = LIQUID * (0.9 + 0.2 * field);     // subtle tonal variation
+        float lift = (1.0 - line) * RIPPLE + c * 0.03;
+        col += lift;                                 // ripple lines + cursor wake sit slightly lighter
+
+        gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
+      }
+    `;
+
+    function compile(type, src){
+      const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
+      if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) console.error(gl.getShaderInfoLog(s));
+      return s;
+    }
+    const prog = gl.createProgram();
+    gl.attachShader(prog, compile(gl.VERTEX_SHADER, vertSrc));
+    gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, fragSrc));
+    gl.linkProgram(prog); gl.useProgram(prog);
+
+    const vbuf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, vbuf);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
+    const loc = gl.getAttribLocation(prog, "aPos");
+    gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+
+    const uRes = gl.getUniformLocation(prog, "uRes");
+    const uTime = gl.getUniformLocation(prog, "uTime");
+    const uTexel = gl.getUniformLocation(prog, "uTexel");
+    gl.uniform1i(gl.getUniformLocation(prog, "uTrail"), 0);
+
+    const tex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+
+    function resize(){
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width  = Math.floor(innerWidth  * dpr);
+      canvas.height = Math.floor(innerHeight * dpr);
+      gl.viewport(0, 0, canvas.width, canvas.height);
+      sizeTrail(); last = null;
+    }
+    resize(); addEventListener("resize", resize);
+
+    const start = performance.now();
+    function frame(){
+      const t = (performance.now() - start) / 1000;
+      tctx.shadowBlur = 0;
+      tctx.fillStyle = "rgba(0,0,0," + FADE + ")";
+      tctx.fillRect(0, 0, trail.width, trail.height);
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, trail);
+      gl.uniform2f(uRes, canvas.width, canvas.height);
+      gl.uniform1f(uTime, t);
+      gl.uniform2f(uTexel, 1 / trail.width, 1 / trail.height);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+      requestAnimationFrame(frame);
+    }
+    frame();
+  })();
+
+/* ========================================================
+   2) CUSTOM DOT CURSOR (copied from index.html)
+   ======================================================== */
+  (function () {
+    // only on devices with a real pointer (skip touch screens)
+    if (!matchMedia("(hover: hover) and (pointer: fine)").matches) return;
+    const dot = document.getElementById("cursor");
+    if (!dot) return;
+    document.documentElement.classList.add("hide-cursor");
+
+    let tx = innerWidth / 2, ty = innerHeight / 2;   // where the mouse is
+    let x = tx, y = ty, px = x, py = y;              // rendered (lagged) + previous
+
+    addEventListener("pointermove", (e) => { tx = e.clientX; ty = e.clientY; }, { passive: true });
+    addEventListener("mouseleave", () => dot.style.opacity = "0");
+    addEventListener("mouseenter", () => dot.style.opacity = "1");
+
+    function loop(){
+      x += (tx - x) * 0.35;  y += (ty - y) * 0.35;   // slight lag for a fluid feel
+      const dx = x - px, dy = y - py;
+      const speed = Math.min(Math.hypot(dx, dy), 60);
+      const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+      const stretch = 1 + speed * 0.06;              // elongate along the direction of motion
+      const squash  = 1 / (1 + speed * 0.04);        // thin out across it -> a taper
+      px = x; py = y;
+      dot.style.transform =
+        "translate(" + x + "px," + y + "px) translate(-50%,-50%) rotate(" + angle + "deg) scale(" + stretch + "," + squash + ")";
+      requestAnimationFrame(loop);
+    }
+    loop();
+  })();
+
+/* ========================================================
+   3) FURROW
+   The page holds no answers. It asks the Furrow API for today's
+   prompts, sends each answer to be scored, and gets the reveal back.
+   ======================================================== */
+(function () {
+  "use strict";
+
+  /* ---------- config ---------- */
+  const API = "https://furrow-api.cristilloarts.workers.dev";      // the Furrow API (Cloudflare Worker)
+  const SECONDS = 30;
+  const SHARE_URL = "cristilloarts.com/furrow";
+  const TIERS = {
+    green:  { name: "Green",  word: "Exact",   emoji: "🟩" },
+    yellow: { name: "Yellow", word: "Close",   emoji: "🟨" },
+    orange: { name: "Orange", word: "Related", emoji: "🟧" },
+    red:    { name: "Red",    word: "Miss",    emoji: "🟥" },
+  };
+  const RANKS = [
+    [450, "Bedrock",   "You know Andre inside out"],
+    [350, "Deep Root", "Close friend territory"],
+    [250, "Sprout",    "You're getting there"],
+    [0,   "Seed",      "Come back tomorrow"],
+  ];
+
+  /* ---------- storage (safe) ---------- */
+  const KEY = "furrow.v2";
+  let store = { runs: {}, player: null };
+  try { const raw = localStorage.getItem(KEY); if (raw) store = Object.assign(store, JSON.parse(raw)); } catch (e) {}
+  if (!store.player) {
+    store.player = (window.crypto && crypto.randomUUID) ? crypto.randomUUID()
+      : "p-" + Math.random().toString(36).slice(2) + Date.now().toString(36);
+  }
+  function save() { try { localStorage.setItem(KEY, JSON.stringify(store)); } catch (e) {} }
+  save();
+
+  /* ---------- API ---------- */
+  async function api(path, payload) {
+    const ctrl = new AbortController(), t = setTimeout(() => ctrl.abort(), 20000);
+    try {
+      const res = await fetch(API + path, payload === undefined ? { signal: ctrl.signal } : {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload), signal: ctrl.signal,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw Object.assign(new Error(data.message || "Furrow couldn't answer that request."), { code: data.error });
+      return data;
+    } catch (e) {
+      if (e.code) throw e;
+      throw new Error("Couldn't reach Furrow. Check your connection and try again.");
+    } finally { clearTimeout(t); }
+  }
+
+  /* ---------- today ---------- */
+  let TODAY = null, resetAt = 0;
+  async function loadToday() {
+    TODAY = await api("/api/today");
+    resetAt = Date.now() + TODAY.resetsIn * 1000;
+    return TODAY;
+  }
+  const currentDay = () => TODAY.day;
+  function dateLabel(iso) {
+    if (!iso) return "";
+    const [y, m, d] = iso.split("-").map(Number);
+    return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("en-CA", { timeZone: "UTC", weekday: "long", month: "long", day: "numeric" });
+  }
+  function countdownText() {
+    let s = Math.max(0, Math.round((resetAt - Date.now()) / 1000));
+    const h = Math.floor(s / 3600); s -= h * 3600; const m = Math.floor(s / 60); s -= m * 60;
+    return [h, m, s].map(n => String(n).padStart(2, "0")).join(":");
+  }
+
+  /* ---------- run state ---------- */
+  function run(day) {
+    if (!store.runs[day]) store.runs[day] = { idx: 0, phase: "new", results: [], deadline: null, draft: "" };
+    return store.runs[day];
+  }
+  const total = r => r.results.reduce((s, x) => s + x.points, 0);
+  const rankOf = s => RANKS.find(r => s >= r[0]);
+  function doneDays() { return Object.keys(store.runs).map(Number).filter(d => store.runs[d].phase === "done").sort((a, b) => b - a); }
+  function streak(today) {
+    let d = store.runs[today] && store.runs[today].phase === "done" ? today : today - 1, n = 0;
+    while (store.runs[d] && store.runs[d].phase === "done") { n++; d--; }
+    return n;
+  }
+
+  /* ---------- DOM helpers ---------- */
+  const $ = id => document.getElementById(id);
+  const screens = ["home", "prompt", "reveal", "results"];
+  function show(id) {
+    screens.forEach(s => { $(s).hidden = s !== id; });
+    $(id).classList.remove("screen-in"); void $(id).offsetWidth; $(id).classList.add("screen-in");
+    window.scrollTo(0, 0);
+  }
+  function drawField(el, r, currentIdx) {
+    el.innerHTML = "";
+    for (let i = 0; i < 5; i++) {
+      const g = document.createElement("div"); g.className = "groove";
+      const res = r.results[i];
+      if (res) { g.dataset.tier = res.tier; g.textContent = TIERS[res.tier].word; g.setAttribute("aria-label", "Prompt " + (i + 1) + ": " + TIERS[res.tier].name + ", " + res.points + " points"); }
+      else { g.textContent = i + 1; if (i === currentIdx) g.classList.add("current"); g.setAttribute("aria-label", "Prompt " + (i + 1)); }
+      el.appendChild(g);
+    }
+  }
+  function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+
+  /* ---------- HOME ---------- */
+  function homeMessage(text, retry) {
+    $("home-closed").hidden = !text;
+    $("home-closed").innerHTML = "";
+    if (!text) return;
+    $("home-closed").append(text);
+    if (retry) {
+      const b = document.createElement("button"); b.type = "button"; b.className = "linkish"; b.textContent = "Try again";
+      b.style.marginLeft = "8px"; b.addEventListener("click", boot); $("home-closed").append(b);
+    }
+  }
+  function renderHome() {
+    const ready = !!TODAY;
+    const day = ready ? currentDay() : 0, r = ready ? store.runs[day] : null;
+    $("home-day").textContent = ready && day >= 1 ? "Day " + day : "";
+    $("home-date").textContent = ready ? dateLabel(TODAY.date) : "";
+    const done = doneDays();
+    $("st-streak").textContent = streak(day);
+    $("st-played").textContent = done.length;
+    $("st-best").textContent = done.length ? Math.max(...done.map(d => total(store.runs[d]))) : "–";
+
+    const open = ready && TODAY.open;
+    const finished = r && r.phase === "done";
+    if (ready && !open) homeMessage(day < 1 ? "Furrow starts soon. Check back on launch day."
+      : "That's all " + TODAY.days + " days of Furrow for now. New prompts are on the way.");
+    else if (ready) homeMessage("");
+    $("home-ready").hidden = !open || finished;
+    $("home-done").hidden = !finished;
+    if (finished) { $("hd-score").textContent = total(r); drawField($("hd-field"), r, -1); }
+    $("play-btn").textContent = r && r.phase !== "new" && !finished ? "Continue (prompt " + (r.idx + 1) + " of 5) →" : "Play today's Furrow →";
+
+    const past = done.filter(d => d !== day);
+    $("history").hidden = !past.length;
+    $("history-list").innerHTML = past.map(d => {
+      const rr = store.runs[d];
+      return '<li><span class="d">Day ' + d + '</span><span class="mini">' +
+        rr.results.map(x => '<i data-tier="' + x.tier + '" title="' + TIERS[x.tier].name + '"></i>').join("") +
+        '</span><span>' + total(rr) + ' · ' + rankOf(total(rr))[1] + '</span></li>';
+    }).join("");
+    show("home");
+  }
+
+  /* ---------- PROMPT ---------- */
+  let tick = null, sending = false;
+  function startPrompt() {
+    const day = currentDay(), r = run(day), q = TODAY.questions[r.idx];
+    if (r.phase === "new") r.phase = "prompt";
+    if (!r.deadline) { r.deadline = Date.now() + SECONDS * 1000; r.draft = ""; }
+    save();
+    $("pr-count").textContent = "Prompt " + (r.idx + 1) + " of 5";
+    $("pr-theme").textContent = q.theme;
+    $("pr-text").textContent = q.prompt;
+    drawField($("pr-field"), r, r.idx);
+    setSending(false, "");
+    const input = $("answer"); input.value = r.draft || ""; input.readOnly = false;
+    show("prompt");
+    input.focus({ preventScroll: true });
+    clearInterval(tick);
+    const update = () => {
+      const left = Math.max(0, r.deadline - Date.now());
+      $("timer-fill").style.transform = "scaleX(" + (left / (SECONDS * 1000)) + ")";
+      $("timer-num").textContent = Math.ceil(left / 1000);
+      $("timer").classList.toggle("low", left <= 10000);
+      if (left <= 0) { clearInterval(tick); input.readOnly = true; submit(); }
+    };
+    update(); tick = setInterval(update, 100);
+  }
+  function setSending(on, msg) {
+    sending = on;
+    $("submit-btn").disabled = on;
+    $("submit-btn").textContent = on ? "Scoring…" : "Submit";
+    $("pr-hint").textContent = msg || "Enter submits. When time runs out, whatever is in the box is submitted.";
+    $("pr-hint").classList.toggle("err", !!msg);
+  }
+  $("answer").addEventListener("input", e => { const r = run(currentDay()); r.draft = e.target.value; save(); });
+  $("answer-form").addEventListener("submit", e => { e.preventDefault(); submit(); });
+  async function submit() {
+    if (sending) return;
+    const day = currentDay(), r = run(day);
+    if (r.phase !== "prompt") return;
+    const q = TODAY.questions[r.idx], answer = $("answer").value.trim();
+    setSending(true, "");
+    try {
+      const res = await api("/api/answer", { day, id: q.id, answer });
+      clearInterval(tick);
+      r.results[r.idx] = { id: q.id, prompt: q.prompt, theme: q.theme, answer, tier: res.tier, points: res.points,
+                           source: res.source, andre: res.andre, reveal: res.reveal || "" };
+      r.phase = "reveal"; r.deadline = null; r.draft = "";
+      save(); setSending(false, ""); showReveal();
+    } catch (e) {
+      setSending(false, e.message + (e.code ? "" : " Press Submit to send your answer again."));
+    }
+  }
+
+  /* ---------- REVEAL ---------- */
+  function showReveal() {
+    const r = run(currentDay()), res = r.results[r.idx], t = TIERS[res.tier];
+    $("rv-count").textContent = "Prompt " + (r.idx + 1) + " of 5";
+    $("rv-theme").textContent = res.theme;
+    $("rv-prompt").textContent = res.prompt;
+    drawField($("rv-field"), r, -1);
+    $("rv-badge").dataset.tier = res.tier;
+    $("rv-badge").textContent = t.name + " · " + t.word;
+    $("rv-points").innerHTML = res.points + "<small>pts</small>";
+    $("rv-yours").textContent = res.answer || "(no answer)";
+    $("rv-andre").textContent = res.andre;
+    $("rv-story").textContent = res.reveal || "Andre's story for this one is coming soon.";
+    $("rv-story").classList.toggle("placeholder", !res.reveal);
+    const note = res.source === "blank" ? "No answer was given, so this one counts as a miss."
+      : res.source === "judge_unavailable" ? "Our judge couldn't score that answer just now, so it counts as a miss."
+      : res.source === "blocked" ? "That answer can't be scored."
+      : "";
+    $("rv-note").hidden = !note; $("rv-note").textContent = note;
+    $("next-btn").textContent = r.idx < 4 ? "Next prompt →" : "See my results →";
+    show("reveal");
+    $("next-btn").focus({ preventScroll: true });
+  }
+  $("next-btn").addEventListener("click", () => {
+    const r = run(currentDay());
+    if (r.idx < 4) { r.idx++; r.phase = "prompt"; save(); startPrompt(); }
+    else { r.phase = "done"; save(); showResults(); }
+  });
+
+  /* ---------- RESULTS ---------- */
+  function shareText(day, r) {
+    const s = total(r);
+    return "Furrow #" + day + " · " + s + "/500 · " + rankOf(s)[1] + "\n" + r.results.map(x => TIERS[x.tier].emoji).join("") + "\n" + SHARE_URL;
+  }
+  function showResults() {
+    const day = currentDay(), r = run(day), s = total(r), rk = rankOf(s);
+    $("rs-day").textContent = "#" + day;
+    $("rs-score").textContent = s;
+    $("rs-rank").textContent = rk[1];
+    $("rs-meaning").textContent = rk[2];
+    $("rs-list").innerHTML = r.results.map(x =>
+      '<li><span class="sq" data-tier="' + x.tier + '"></span><span class="p">' + esc(x.prompt) + '</span><span class="s">' +
+      TIERS[x.tier].word + " · " + x.points + '</span></li>').join("");
+    $("share-status").textContent = ""; $("share-out").hidden = true;
+    show("results");
+    Crowd.load(day, s);
+  }
+  $("share-btn").addEventListener("click", () => {
+    const day = currentDay(), text = shareText(day, run(day));
+    const fallback = () => { const o = $("share-out"); o.value = text; o.hidden = false; o.focus(); o.select();
+                             $("share-status").textContent = "Copy the text below to share it."; };
+    try {
+      navigator.clipboard.writeText(text).then(() => { $("share-status").textContent = "Copied. Paste it into any chat."; }, fallback);
+    } catch (e) { fallback(); }
+  });
+  $("home-btn").addEventListener("click", renderHome);
+  document.addEventListener("click", e => { if (e.target.closest("[data-show-results]")) showResults(); });
+
+  /* ---------- CROWD: everyone's scores for the day ---------- */
+  const Crowd = (function () {
+    let shown = null;
+    async function load(day, mine) {
+      shown = { day, mine, scores: [mine] };
+      $("dist-src").textContent = "Loading scores…"; $("dist-src").className = "dist-src";
+      draw();
+      const r = run(day);
+      try {
+        if (!r.submitted) { await api("/api/score", { day, player: store.player, score: mine }); r.submitted = true; save(); }
+      } catch (e) { /* the chart can still show everyone else */ }
+      try {
+        const data = await api("/api/scores?day=" + day);
+        const scores = (data.scores || []).filter(v => Number.isInteger(v));
+        if (!r.submitted) scores.push(mine);
+        shown.scores = scores.length ? scores : [mine];
+        $("dist-src").textContent = shown.scores.length === 1 ? "Only you so far today" : shown.scores.length + " players today";
+      } catch (e) {
+        $("dist-src").textContent = "Couldn't load everyone's scores right now";
+      }
+      draw();
+    }
+    function draw() { if (shown) renderDistribution($("dist-chart"), shown.scores, shown.mine, shown.scores.length >= 2); }
+    addEventListener("resize", () => { if (shown && !$("results").hidden) draw(); });
+    return { load };
+  })();
+
+  function renderDistribution(el, scores, mine, curve) {
+    const n = scores.length;
+    const avg = scores.reduce((a, b) => a + b, 0) / n;
+    const top = Math.max(...scores);
+    const place = 1 + scores.filter(v => v > mine).length;
+    const beat = n > 1 ? Math.round(100 * scores.filter(v => v < mine).length / (n - 1)) : null;
+    $("ds-avg").textContent = Math.round(avg);
+    $("ds-top").textContent = top;
+    $("ds-place").textContent = "#" + place;
+    $("ds-place-sub").textContent = "of " + n + (beat === null ? " · first to finish" : " · higher than " + beat + "%");
+
+    const W = Math.max(280, el.clientWidth || 560), H = 230;
+    const m = { l: 10, r: 10, t: 58, b: 28 };
+    const iw = W - m.l - m.r, ih = H - m.t - m.b;
+    const x = v => m.l + (v / 500) * iw;
+
+    // Smooth curve: Gaussian kernel density over 0–500
+    const mean = avg, sd = Math.sqrt(scores.reduce((a, v) => a + (v - mean) * (v - mean), 0) / n) || 40;
+    const bw = Math.max(18, 1.06 * sd * Math.pow(n, -0.2));
+    const pts = [];
+    for (let v = 0; v <= 500; v += 5) {
+      let d = 0; for (const s of scores) { const z = (v - s) / bw; d += Math.exp(-0.5 * z * z); }
+      pts.push([v, d]);
+    }
+    const maxD = Math.max(...pts.map(p => p[1])) || 1;
+    const y = d => m.t + ih - (d / maxD) * ih;
+    const densAt = v => { let d = 0; for (const s of scores) { const z = (v - s) / bw; d += Math.exp(-0.5 * z * z); } return d; };
+    const line = pts.map((p, i) => (i ? "L" : "M") + x(p[0]).toFixed(1) + " " + y(p[1]).toFixed(1)).join(" ");
+    const area = line + " L" + x(500) + " " + (m.t + ih) + " L" + x(0) + " " + (m.t + ih) + " Z";
+
+    // Markers, labels staggered into rows so they never collide
+    const marks = [{ cls: "mk-avg", v: avg, text: "Avg " + Math.round(avg) }];
+    if (top === mine) marks.push({ cls: "mk-you", v: mine, text: "You " + mine + " · Top" });
+    else marks.push({ cls: "mk-top", v: top, text: "Top " + top }, { cls: "mk-you", v: mine, text: "You " + mine });
+    marks.sort((a, b) => a.v - b.v);
+    const rows = [-Infinity, -Infinity, -Infinity];
+    marks.forEach(mk => {
+      const w = mk.text.length * 7.2 + 8, cx = Math.min(Math.max(x(mk.v), m.l + w / 2), W - m.r - w / 2);
+      let row = rows.findIndex(end => cx - w / 2 > end + 4); if (row < 0) row = 2;
+      rows[row] = cx + w / 2; mk.lx = cx; mk.row = row;
+    });
+    const used = Math.max(...marks.map(mk => mk.row)) + 1;
+    marks.forEach(mk => { mk.ly = m.t - 12 - (used - 1 - mk.row) * 16; });   // labels sit just above the lines
+    const ticks = [0, 100, 200, 300, 400, 500];
+    const svg =
+      '<svg viewBox="0 0 ' + W + ' ' + H + '" width="' + W + '" height="' + H + '" aria-hidden="true">' +
+      '<g class="axis"><line x1="' + m.l + '" x2="' + (W - m.r) + '" y1="' + (m.t + ih) + '" y2="' + (m.t + ih) + '"/>' +
+      ticks.map(t => '<text x="' + x(t) + '" y="' + (H - 8) + '" text-anchor="' + (t === 0 ? "start" : t === 500 ? "end" : "middle") + '">' + t + '</text>').join("") + '</g>' +
+      '<rect class="band" id="dist-band" x="0" y="' + m.t + '" width="0" height="' + ih + '" visibility="hidden"/>' +
+      (curve ? '<path class="area" d="' + area + '"/><path class="curve" d="' + line + '"/>' : "") +
+      marks.map(mk => {
+        const X = x(mk.v).toFixed(1);
+        return '<g class="mk ' + mk.cls + '"><line x1="' + X + '" x2="' + X + '" y1="' + (m.t - 6) + '" y2="' + (m.t + ih) + '"/>' +
+          '<text x="' + mk.lx.toFixed(1) + '" y="' + mk.ly + '" text-anchor="middle">' + mk.text + '</text>' +
+          (mk.cls === "mk-you" ? '<circle cx="' + X + '" cy="' + (curve ? y(densAt(mk.v)) : m.t + ih).toFixed(1) + '" r="5"/>' : "") + '</g>';
+      }).join("") +
+      '<line class="cross" id="dist-cross" x1="0" x2="0" y1="' + m.t + '" y2="' + (m.t + ih) + '" visibility="hidden"/>' +
+      '</svg><div class="dist-tip" id="dist-tip" hidden></div>';
+    el.innerHTML = svg;
+    el.setAttribute("aria-label", n + " players. Average " + Math.round(avg) + ", top score " + top + ", your score " + mine + ", placed " + place + " of " + n + ".");
+
+    // Hover: players within a 25-point band around the pointer
+    const svgEl = el.querySelector("svg"), tip = el.querySelector("#dist-tip"), cross = el.querySelector("#dist-cross"), band = el.querySelector("#dist-band");
+    const hide = () => { tip.hidden = true; cross.setAttribute("visibility", "hidden"); band.setAttribute("visibility", "hidden"); };
+    svgEl.addEventListener("pointermove", e => {
+      const r = svgEl.getBoundingClientRect(), px = (e.clientX - r.left) * (W / r.width);
+      const v = Math.max(0, Math.min(500, ((px - m.l) / iw) * 500));
+      const lo = Math.min(475, Math.floor(v / 25) * 25), hi = lo + 25;
+      const count = scores.filter(s => s >= lo && (s < hi || (hi === 500 && s === 500))).length;
+      cross.setAttribute("x1", x(v)); cross.setAttribute("x2", x(v)); cross.setAttribute("visibility", "visible");
+      band.setAttribute("x", x(lo)); band.setAttribute("width", x(hi) - x(lo)); band.setAttribute("visibility", "visible");
+      tip.hidden = false;
+      tip.innerHTML = "<b>" + lo + "–" + (hi === 500 ? 500 : hi - 1) + "</b> · " + count + (count === 1 ? " player" : " players");
+      const left = (x(v) / W) * r.width;
+      tip.style.left = Math.min(Math.max(left, 70), r.width - 70) + "px";
+      tip.style.top = (m.t / H) * r.height - 4 + "px";
+    });
+    svgEl.addEventListener("pointerleave", hide);
+  }
+
+
+  /* ---------- HOW TO PLAY ---------- */
+  let lastFocus = null;
+  function openHelp() { lastFocus = document.activeElement; $("help").hidden = false; $("help-close").focus(); }
+  function closeHelp() { $("help").hidden = true; if (lastFocus) lastFocus.focus(); }
+  document.addEventListener("click", e => { if (e.target.closest("[data-open-help]")) openHelp(); });
+  $("help-close").addEventListener("click", closeHelp);
+  $("help").addEventListener("click", e => { if (e.target === $("help")) closeHelp(); });
+  document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("help").hidden) closeHelp(); });
+
+  $("play-btn").addEventListener("click", () => {
+    const r = run(currentDay());
+    if (r.phase === "reveal") showReveal(); else startPrompt();
+  });
+
+  /* ---------- countdown; a new day loads itself at midnight ---------- */
+  setInterval(() => {
+    document.querySelectorAll("[data-countdown]").forEach(el => { el.textContent = countdownText(); });
+    if (TODAY && resetAt && Date.now() > resetAt + 2000 && !$("home").hidden) { resetAt = 0; boot(); }
+  }, 1000);
+
+  /* ---------- boot: resume mid-run if needed ---------- */
+  async function boot() {
+    renderHome();
+    $("play-btn").disabled = true;
+    try {
+      await loadToday();
+    } catch (e) {
+      TODAY = null; renderHome(); $("home-ready").hidden = true;
+      homeMessage(e.message, true);
+      return;
+    }
+    $("play-btn").disabled = false;
+    const r = store.runs[currentDay()];
+    if (TODAY.open && r && r.phase === "prompt") startPrompt();
+    else if (TODAY.open && r && r.phase === "reveal") showReveal();
+    else renderHome();
+  }
+  boot();
+})();
+</script>
+</body>
+</html>

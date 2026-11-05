@@ -1,0 +1,8 @@
+# Furrow answer key: never commit (the repo is public)
+furrow-data.js
+furrow-api/seed/
+
+# Server tooling
+furrow-api/node_modules/
+furrow-api/.wrangler/
+furrow-api/.dev.vars
