@@ -1,6 +1,8 @@
 name = "furrow-api"
 main = "src/index.js"
 compatibility_date = "2026-10-01"
+workers_dev = true
+preview_urls = false
 
 [vars]
 # Sites allowed to call the API from a browser
@@ -9,7 +11,7 @@ ALLOWED_ORIGINS = "https://cristilloarts.com,https://www.cristilloarts.com,http:
 [[d1_databases]]
 binding = "DB"
 database_name = "furrow"
-database_id = "REPLACE_AFTER_CREATE"   # filled in by `wrangler d1 create furrow`
+database_id = "1cff7f79-7e33-425c-ad54-e11f0a1b6f84"
 
 # Secret, set in the Cloudflare dashboard (never in this file):
 #   ANTHROPIC_API_KEY
